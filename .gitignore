@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Environment & credentials
+.env
+*.env.txt
+service-account.json
+*.key.json
+
+# Runtime data files (start fresh on each deploy)
+server/messages.json
+server/stories.json
+
+# Build output
+client/dist/
+client/build/

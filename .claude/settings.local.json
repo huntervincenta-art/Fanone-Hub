@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(printf \"RAPIDAPI_KEY=your_key_here\\\\nRAPIDAPI_HOST=twttr241.p.rapidapi.com\\\\n\")"
+    ]
+  }
+}
