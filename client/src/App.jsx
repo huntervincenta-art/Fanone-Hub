@@ -287,8 +287,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <Link className="app-logo" to="/">
-          <img src="/logo.png" alt="Logo" className="app-logo-img" />
-          <span className="app-logo-text">HUB</span>
+          <span className="app-logo-text">MFS Hub</span>
         </Link>
         <nav className="app-nav">
           <Link

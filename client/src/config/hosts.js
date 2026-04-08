@@ -1,25 +1,16 @@
 export const HOSTS = [
-  'DAN',
-  'KEVIN',
-  'JOHN',
-  'DAVID',
-  "DAVID'S SHOW",
-  'VINCENT',
+  'MICHAEL',
+  'PETER',
+  'ANDREW',
   'HUNTER',
-  'OMAR',
-  'FANONE',
   'AVAILABLE TO CLAIM',
 ];
 
 export const HOST_COLORS = {
-  kevin:   '#4f87f7',
-  vincent: '#a78bfa',
+  michael: '#c41e3a',
+  peter:   '#4f87f7',
+  andrew:  '#a78bfa',
   hunter:  '#4ade80',
-  fanone:  '#f87171',
-  david:   '#fb923c',
-  john:    '#34d399',
-  dan:     '#fbbf24',
-  omar:    '#f472b6',
 };
 
 export function getHostColor(name) {

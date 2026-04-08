@@ -14,7 +14,7 @@ export default function NotifyButton({ passphrase }) {
           'Content-Type': 'application/json',
           'x-passphrase': passphrase,
         },
-        body: JSON.stringify({ title: 'Team Hub', message: 'New stories are ready!' }),
+        body: JSON.stringify({ title: 'MFS Hub', message: 'New stories are ready!' }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

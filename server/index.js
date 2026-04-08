@@ -269,10 +269,10 @@ function httpsRequest(url, options = {}, body = null) {
 // ── ntfy helper ───────────────────────────────────────────────────────────────
 
 function sendNtfyToTopic(topic, title, message, clickUrl = 'https://odhub.xyz') {
-  const body = message || title || 'Team Hub';
+  const body = message || title || 'MFS Hub';
   const headers = {
     'Content-Type': 'text/plain',
-    'Title':        title || 'Team Hub',
+    'Title':        title || 'MFS Hub',
     'Click':        clickUrl,
     'Content-Length': String(Buffer.byteLength(body)),
   };
@@ -361,11 +361,10 @@ app.post('/api/auth', (req, res) => {
 
   const submittedPassphrase = (req.body.passphrase || '').trim();
   const submittedName = (req.body.name || '').trim();
-  const submittedPin = (req.body.pin || '').trim();
 
   const users = readUsers();
   const user = users.find(u => u.name === submittedName);
-  const valid = submittedPassphrase === PASSPHRASE && !!user && user.pin === submittedPin;
+  const valid = submittedPassphrase === PASSPHRASE && !!user;
 
   if (valid) {
     loginAttempts.delete(ip);
@@ -378,7 +377,7 @@ app.post('/api/auth', (req, res) => {
     loginAttempts.set(ip, record);
     console.log('[ntfy:login-lockout] Click: https://odhub.xyz');
     sendNtfy(
-      'Team Hub — Login Alert',
+      'MFS Hub — Login Alert',
       `IP ${ip} locked out after ${MAX_ATTEMPTS} failed login attempts.`
     ).catch(() => {});
     return res.status(429).json({ error: 'Too many failed attempts. Locked out for 15 minutes.' });
@@ -482,7 +481,7 @@ app.post('/api/stories/:id/working-on-it', requireAuth, async (req, res) => {
 // POST /api/stories/notify-available — manual team notification for unclaimed stories
 app.post('/api/stories/notify-available', requireAuth, (req, res) => {
   console.log('[ntfy:team-notify] Click: https://odhub.xyz');
-  sendNtfy('Team Hub', 'New Stories Are Available To Claim!').catch(() => {});
+  sendNtfy('MFS Hub', 'New Stories Are Available To Claim!').catch(() => {});
   res.json({ ok: true });
 });
 

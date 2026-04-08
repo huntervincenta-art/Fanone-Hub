@@ -34,7 +34,7 @@ export default function Notifications() {
     <div className="notif-page">
       <h2>Get Notifications</h2>
       <p className="notif-intro">
-        Team Hub sends push notifications via <strong>ntfy.sh</strong> — a free app that delivers
+        MFS Hub sends push notifications via <strong>ntfy.sh</strong> — a free app that delivers
         alerts directly to your phone. You need to subscribe to <strong>two topics</strong>: one for
         team-wide alerts and one for your personal messages.
       </p>

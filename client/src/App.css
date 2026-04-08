@@ -1,15 +1,15 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0e1117;
-  --surface: #161b24;
-  --surface-raised: #1e2533;
-  --border: #2a3040;
-  --text: #e2e8f2;
-  --muted: #7a87a0;
-  --accent: #4f87f7;
-  --accent-hover: #6b9cf8;
-  --danger: #f87171;
+  --bg: #1a2332;
+  --surface: #22304a;
+  --surface-raised: #2c3a55;
+  --border: #3a4866;
+  --text: #ffffff;
+  --muted: #a7b3c7;
+  --accent: #c41e3a;
+  --accent-hover: #e0344f;
+  --danger: #c41e3a;
   --success: #4ade80;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0,0,0,0.4);
@@ -93,10 +93,18 @@ body {
 }
 
 .auth-logo-hub {
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.08em;
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.06em;
+}
+
+.auth-logo-sub {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #c41e3a;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .auth-card {

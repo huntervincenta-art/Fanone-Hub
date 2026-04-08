@@ -6,7 +6,6 @@ export default function AuthGate({ onAuth }) {
 
   const [passphrase, setPassphrase] = useState('');
   const [name, setName] = useState('');
-  const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +34,7 @@ export default function AuthGate({ onAuth }) {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passphrase, name, pin }),
+        body: JSON.stringify({ passphrase, name }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -50,16 +49,16 @@ export default function AuthGate({ onAuth }) {
     }
   };
 
-  const canSubmit = !loading && passphrase && name && pin;
+  const canSubmit = !loading && passphrase && name;
 
   return (
     <div className="auth-gate">
       <div className="auth-branding">
-        <img src="/logo.png" alt="Logo" className="auth-logo-img" />
-        <span className="auth-logo-hub">HUB</span>
+        <span className="auth-logo-hub">MFS Hub</span>
+        <span className="auth-logo-sub">The Michael Fanone Show</span>
       </div>
       <div className="auth-card">
-        <p>Enter your credentials to continue.</p>
+        <p>Enter the team passphrase and select your name.</p>
         <form className="form" onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="passphrase">Team Passphrase</label>
@@ -86,18 +85,6 @@ export default function AuthGate({ onAuth }) {
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
-          </div>
-          <div className="form-group">
-            <label htmlFor="pin">Personal PIN</label>
-            <input
-              id="pin"
-              type="password"
-              value={pin}
-              onChange={e => setPin(e.target.value)}
-              autoComplete="one-time-code"
-              placeholder="••••"
-              inputMode="numeric"
-            />
           </div>
           {error && <div className="alert alert-error">{error}</div>}
           <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
