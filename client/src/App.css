@@ -1957,6 +1957,50 @@ html[data-theme="light"] .dash-card-footer {
 }
 
 /* ── Recommended Story card ──────────────────────── */
+.recommended-top {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.recommended-top-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.opp-donut {
+  flex-shrink: 0;
+  display: block;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.35));
+}
+
+.recommended-opp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  padding: 0.22rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.recommended-opp-sep {
+  opacity: 0.5;
+}
+
+.recommended-subline {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .recommended-meta {
   display: flex;
   align-items: center;
@@ -1996,6 +2040,10 @@ html[data-theme="light"] .dash-card-footer {
   display: block;
 }
 html[data-theme="light"] .recommended-headline { color: var(--text); }
+html[data-theme="light"] .opp-donut svg text { fill: var(--text); }
+html[data-theme="light"] .opp-donut svg text:nth-of-type(2) { fill: var(--muted); }
+html[data-theme="light"] .opp-donut svg circle:first-of-type { stroke: rgba(15, 23, 42, 0.08); }
+html[data-theme="light"] .recommended-opp-tag { background: rgba(0, 0, 0, 0.03); }
 .recommended-headline:hover { color: var(--accent); }
 
 .recommended-angle {

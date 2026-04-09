@@ -314,6 +314,49 @@ async function synthesize(subject, ytStats, homogeneity, trends, anthropicKey) {
   return parseClaudeJson(text);
 }
 
+// ── Reusable single-subject analysis ──────────────────────────────────────────
+
+async function analyzeSubject(subject, youtubeKey, anthropicKey) {
+  try {
+    // YouTube stats + Google Trends run in parallel
+    // Title homogeneity chains off YouTube titles
+    const [{ ytStats, homogeneity }, trendsData] = await Promise.all([
+      fetchYouTubeStats(subject, youtubeKey).then(async (ytStats) => {
+        const homogeneity = await fetchTitleHomogeneity(subject, ytStats.titles, anthropicKey);
+        return { ytStats, homogeneity };
+      }),
+      fetchGoogleTrendsMomentum(subject),
+    ]);
+
+    // Blend Claude saturation (60%) with YouTube velocity score (40%)
+    const blendedScore = Math.round(
+      0.6 * homogeneity.saturation_score + 0.4 * ytStats.yt_velocity_score
+    );
+
+    const synthesis = await synthesize(subject, ytStats, homogeneity, trendsData, anthropicKey);
+
+    return {
+      subject,
+      saturation_score:    blendedScore,
+      dominant_framing:    homogeneity.dominant_framing,
+      untapped_angles:     homogeneity.untapped_angles || [],
+      avoid_phrases:       homogeneity.avoid_phrases   || [],
+      trends:              trendsData,
+      // YouTube data fields
+      total_views_24h:     ytStats.total_views_24h,
+      avg_views_per_video: ytStats.avg_views_per_video,
+      upload_velocity:     ytStats.upload_velocity,
+      hourly_breakdown:    ytStats.hourly_breakdown,
+      youtube_video_count: ytStats.youtube_video_count,
+      ...synthesis,
+      error: null,
+    };
+  } catch (err) {
+    console.error(`[topic-pulse] "${subject}" failed:`, err.message);
+    return { subject, error: err.message };
+  }
+}
+
 // ── POST /analyze ─────────────────────────────────────────────────────────────
 
 router.post('/analyze', async (req, res) => {
@@ -329,49 +372,11 @@ router.post('/analyze', async (req, res) => {
   if (!anthropicKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not configured' });
 
   const results = await Promise.all(
-    subjects.map(async (subject) => {
-      try {
-        // YouTube stats + Google Trends run in parallel
-        // Title homogeneity chains off YouTube titles
-        const [{ ytStats, homogeneity }, trendsData] = await Promise.all([
-          fetchYouTubeStats(subject, youtubeKey).then(async (ytStats) => {
-            const homogeneity = await fetchTitleHomogeneity(subject, ytStats.titles, anthropicKey);
-            return { ytStats, homogeneity };
-          }),
-          fetchGoogleTrendsMomentum(subject),
-        ]);
-
-        // Blend Claude saturation (60%) with YouTube velocity score (40%)
-        const blendedScore = Math.round(
-          0.6 * homogeneity.saturation_score + 0.4 * ytStats.yt_velocity_score
-        );
-
-        const synthesis = await synthesize(subject, ytStats, homogeneity, trendsData, anthropicKey);
-
-        return {
-          subject,
-          saturation_score:    blendedScore,
-          dominant_framing:    homogeneity.dominant_framing,
-          untapped_angles:     homogeneity.untapped_angles || [],
-          avoid_phrases:       homogeneity.avoid_phrases   || [],
-          trends:              trendsData,
-          // YouTube data fields
-          total_views_24h:     ytStats.total_views_24h,
-          avg_views_per_video: ytStats.avg_views_per_video,
-          upload_velocity:     ytStats.upload_velocity,
-          hourly_breakdown:    ytStats.hourly_breakdown,
-          youtube_video_count: ytStats.youtube_video_count,
-          ...synthesis,
-          error: null,
-        };
-      } catch (err) {
-        console.error(`[topic-pulse] "${subject}" failed:`, err.message);
-        return { subject, error: err.message };
-      }
-    })
+    subjects.map((subject) => analyzeSubject(subject, youtubeKey, anthropicKey))
   );
 
   res.json({ results, analyzed_at: new Date().toISOString() });
 });
 
 module.exports = router;
+module.exports.analyzeSubject = analyzeSubject;

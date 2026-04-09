@@ -17,6 +17,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const { XMLParser } = require('fast-xml-parser');
 const topicPulseRouter = require('./routes/topicPulse');
+const { analyzeSubject: tpAnalyzeSubject } = require('./routes/topicPulse');
 const MFS_SYSTEM_PROMPT = require('./mfs-system-prompt');
 
 // Shared HTTPS agent with connection pooling to prevent ENOBUFS from too many open sockets
@@ -68,6 +69,120 @@ const twitterSearchCache = new Map(); // queryKey -> { data, expiresAt }
 const YOUTUBE_STATS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const MFS_CHANNEL_ID = 'UCihIswdXcJjiqSZ3nKss6ww';
 let youtubeStatsCache = null; // { data, expiresAt }
+
+const RECOMMENDED_STORY_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+let recommendedStoryCache = null; // { data, expiresAt }
+let recommendedStoryInflight = null; // shared promise during cold builds
+
+const APPROVED_SOURCE_NEEDLES = [
+  { name: 'TIME',            needles: ['time.com', 'time magazine'] },
+  { name: 'Reuters',         needles: ['reuters'] },
+  { name: 'Politico',        needles: ['politico'] },
+  { name: 'AP',              needles: ['apnews', 'associated press', 'ap news'] },
+  { name: 'NPR',             needles: ['npr.org', 'npr'] },
+  { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'] },
+  { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'] },
+  { name: 'Washington Post', needles: ['washingtonpost', 'washington post'] },
+  { name: 'CNN',             needles: ['cnn.com', 'cnn'] },
+  { name: 'NBC News',        needles: ['nbcnews', 'nbc news'] },
+  { name: 'CBS News',        needles: ['cbsnews', 'cbs news'] },
+  { name: 'ABC News',        needles: ['abcnews.go.com', 'abcnews', 'abc news'] },
+  { name: 'The Guardian',    needles: ['theguardian', 'the guardian', 'guardian'] },
+  { name: 'The Hill',        needles: ['thehill.com', 'thehill', 'the hill'] },
+  { name: 'ProPublica',      needles: ['propublica'] },
+  { name: 'The Atlantic',    needles: ['theatlantic', 'the atlantic', 'atlantic'] },
+  { name: 'Bloomberg',       needles: ['bloomberg'] },
+  { name: 'Axios',           needles: ['axios'] },
+  { name: 'BBC',             needles: ['bbc.com', 'bbc.co.uk', 'bbc'] },
+  { name: 'PBS',             needles: ['pbs.org', 'pbs'] },
+  { name: 'MSNBC',           needles: ['msnbc'] },
+  { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'] },
+  { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'] },
+];
+
+function matchApprovedOutlet(article) {
+  const parts = [];
+  if (article.url || article.link) {
+    try {
+      const u = new URL(article.url || article.link);
+      parts.push(u.hostname.toLowerCase().replace(/^www\./, ''));
+      parts.push(u.pathname.toLowerCase());
+    } catch {}
+  }
+  const src = article.source || article.sourceName || '';
+  if (src) parts.push(String(src).toLowerCase());
+  const hay = parts.join(' ');
+  if (!hay) return null;
+  for (const outlet of APPROVED_SOURCE_NEEDLES) {
+    for (const needle of outlet.needles) {
+      if (hay.includes(needle)) return outlet.name;
+    }
+  }
+  return null;
+}
+
+// Extract a short, YouTube-searchable topic keyword from a headline.
+// Strips stopwords and outlet boilerplate, takes the most distinctive 2–3 words.
+const TOPIC_STOPWORDS = new Set([
+  'a','an','the','of','for','with','to','in','on','at','by','from','as','and','or','but',
+  'is','are','was','were','be','been','being','has','have','had','do','does','did','will',
+  'would','could','should','can','may','might','must','this','that','these','those','it',
+  'its','his','her','their','our','your','my','about','after','before','over','under','than',
+  'then','so','up','down','out','off','new','says','said','say','asks','tells','told','goes',
+  'now','still','more','most','less','least','very','just','only','also','here','there',
+  'how','why','what','who','whom','when','where','which','one','two','amid','despite','vs',
+]);
+
+function extractTopicKeyword(headline) {
+  if (!headline) return '';
+  // Drop publication suffix like " - The New York Times" / " | CNN"
+  const cleaned = String(headline).split(/\s[-|–—]\s/)[0];
+  const tokens = cleaned
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  // Prefer Capitalized terms (proper nouns / entities)
+  const proper = [];
+  for (const t of tokens) {
+    if (proper.length >= 3) break;
+    if (TOPIC_STOPWORDS.has(t.toLowerCase())) continue;
+    if (/^[A-Z][a-zA-Z]+$/.test(t)) proper.push(t);
+  }
+  if (proper.length >= 2) return proper.slice(0, 3).join(' ');
+
+  // Otherwise pick the first 2–3 non-stopword tokens
+  const words = [];
+  for (const t of tokens) {
+    if (words.length >= 3) break;
+    if (TOPIC_STOPWORDS.has(t.toLowerCase())) continue;
+    if (t.length < 3) continue;
+    words.push(t);
+  }
+  return words.join(' ') || cleaned.split(/\s+/).slice(0, 3).join(' ');
+}
+
+function opportunityBucket(saturationScore) {
+  // saturation_score is 0–100; opportunity = 100 - saturation
+  if (saturationScore == null || isNaN(saturationScore)) {
+    return { level: 'unknown', label: 'Unknown', color: '#9ca3af' };
+  }
+  if (saturationScore <= 35) {
+    return { level: 'high', label: 'High Opportunity', color: '#22c55e' };
+  }
+  if (saturationScore <= 65) {
+    return { level: 'moderate', label: 'Moderate', color: '#fbbf24' };
+  }
+  return { level: 'low', label: 'Low Opportunity', color: '#c41e3a' };
+}
+
+function lifecycleLabel(analysis) {
+  const sat = analysis?.saturation_score ?? 50;
+  const momentum = analysis?.trends?.momentum;
+  if (sat <= 35 || momentum === 'rising') return 'Rising';
+  if (sat >= 70 || momentum === 'falling') return 'Declining';
+  return 'Peak';
+}
 
 // In-memory presence store: name -> lastSeen (ms timestamp)
 const presenceStore = new Map();
@@ -861,6 +976,129 @@ app.get('/api/youtube-stats', requireAuth, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('[youtube-stats] exception:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/recommended-story — surfaces the best-opportunity story
+//   1. Pull the latest find-stories cache (or rebuild it minimally if empty)
+//   2. Pick approved-source candidates
+//   3. Run topic-pulse analysis on the top 3
+//   4. Return the lowest-saturation (highest-opportunity) story + analysis
+app.get('/api/recommended-story', requireAuth, async (req, res) => {
+  try {
+    if (recommendedStoryCache && recommendedStoryCache.expiresAt > Date.now()) {
+      return res.json(recommendedStoryCache.data);
+    }
+
+    if (recommendedStoryInflight) {
+      const data = await recommendedStoryInflight;
+      return res.json(data);
+    }
+
+    const youtubeKey   = (process.env.YOUTUBE_API_KEY   || '').trim();
+    const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+    if (!youtubeKey)   return res.status(503).json({ error: 'YOUTUBE_API_KEY is not configured' });
+    if (!anthropicKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not configured' });
+
+    recommendedStoryInflight = (async () => {
+      // Source the article pool from the existing find-stories cache when warm.
+      // The dashboard typically warms it via /api/find-stories anyway; if cold,
+      // we tell the caller to retry shortly rather than duplicate the heavy
+      // RSS+Anthropic enrichment pipeline.
+      const cached24h = findStoriesCache.get('24h') || findStoriesCache.get('6h');
+      const articles = (cached24h && Array.isArray(cached24h.data)) ? cached24h.data : [];
+
+      if (!articles.length) {
+        throw new Error('No articles available — find-stories cache is cold. Open Find Stories first or wait a moment.');
+      }
+
+      // Approved sources first; fall back to any.
+      const approved = [];
+      const fallback = [];
+      for (const a of articles) {
+        const outlet = matchApprovedOutlet(a);
+        if (outlet) approved.push({ ...a, outlet });
+        else fallback.push({ ...a, outlet: null });
+      }
+      const candidatePool = (approved.length >= 3 ? approved : approved.concat(fallback)).slice(0, 3);
+
+      if (!candidatePool.length) {
+        throw new Error('No candidate articles to score');
+      }
+
+      console.log('[recommended-story] scoring candidates:', candidatePool.map(c => c.headline));
+
+      const scored = await Promise.all(
+        candidatePool.map(async (article) => {
+          const subject = extractTopicKeyword(article.headline);
+          if (!subject) {
+            return { article, subject: '', analysis: null, error: 'Could not extract topic keyword' };
+          }
+          try {
+            const analysis = await tpAnalyzeSubject(subject, youtubeKey, anthropicKey);
+            return { article, subject, analysis, error: analysis.error || null };
+          } catch (err) {
+            return { article, subject, analysis: null, error: err.message };
+          }
+        })
+      );
+
+      const valid = scored.filter(s => s.analysis && !s.error && typeof s.analysis.saturation_score === 'number');
+
+      // Pick the lowest saturation_score (= highest opportunity)
+      let pick;
+      if (valid.length > 0) {
+        valid.sort((a, b) => a.analysis.saturation_score - b.analysis.saturation_score);
+        pick = valid[0];
+      } else {
+        // Total fallback: use the first candidate without scoring
+        pick = scored[0];
+      }
+
+      const opportunity = opportunityBucket(pick.analysis?.saturation_score);
+      const lifecycle   = pick.analysis ? lifecycleLabel(pick.analysis) : 'Unknown';
+
+      const data = {
+        article: {
+          id:          pick.article.id || pick.article.link || pick.article.url,
+          headline:    pick.article.headline,
+          source:      pick.article.source || '',
+          outlet:      pick.article.outlet || null,
+          url:         pick.article.url || pick.article.link || '',
+          publishedAt: pick.article.publishedAt || pick.article.pubDate || '',
+          angle:       pick.article.angle || '',
+        },
+        subject: pick.subject,
+        analysis: pick.analysis ? {
+          saturation_score: pick.analysis.saturation_score,
+          best_angle:       pick.analysis.best_angle || '',
+          recommendation:   pick.analysis.recommendation || '',
+          dominant_framing: pick.analysis.dominant_framing || '',
+          trends:           pick.analysis.trends || null,
+          youtube_video_count: pick.analysis.youtube_video_count || 0,
+          avg_views_per_video: pick.analysis.avg_views_per_video || 0,
+          upload_velocity:     pick.analysis.upload_velocity || 0,
+        } : null,
+        opportunity,
+        lifecycle,
+        scored_at: new Date().toISOString(),
+        candidates_considered: candidatePool.length,
+      };
+
+      recommendedStoryCache = { data, expiresAt: Date.now() + RECOMMENDED_STORY_CACHE_TTL_MS };
+      return data;
+    })();
+
+    try {
+      const data = await recommendedStoryInflight;
+      res.json(data);
+    } finally {
+      recommendedStoryInflight = null;
+    }
+  } catch (err) {
+    console.error('[recommended-story] error:', err.message);
+    recommendedStoryInflight = null;
     res.status(500).json({ error: err.message });
   }
 });

@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(printf \"RAPIDAPI_KEY=your_key_here\\\\nRAPIDAPI_HOST=twttr241.p.rapidapi.com\\\\n\")",
-      "Bash(node -e \"require\\('./server/mfs-system-prompt.js'\\); console.log\\('OK system prompt'\\);\")"
+      "Bash(node -e \"require\\('./server/mfs-system-prompt.js'\\); console.log\\('OK system prompt'\\);\")",
+      "Bash(node -c server/index.js)",
+      "Bash(node --check server/index.js)",
+      "Bash(node --check server/routes/topicPulse.js)",
+      "Bash(node --check client/src/pages/Dashboard.jsx)"
     ]
   }
 }

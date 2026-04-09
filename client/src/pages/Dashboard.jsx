@@ -3,55 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import TitleTool from '../components/TitleTool';
 import TopicPulse from './TopicPulse';
 
-// Approved-source matchers — kept in sync with FindStories.jsx
-const APPROVED_OUTLETS = [
-  { name: 'TIME',            needles: ['time.com', 'time magazine'] },
-  { name: 'Reuters',         needles: ['reuters'] },
-  { name: 'Politico',        needles: ['politico'] },
-  { name: 'AP',              needles: ['apnews', 'associated press', 'ap news'] },
-  { name: 'NPR',             needles: ['npr.org', 'npr'] },
-  { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'] },
-  { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'] },
-  { name: 'Washington Post', needles: ['washingtonpost', 'washington post'] },
-  { name: 'CNN',             needles: ['cnn.com', 'cnn'] },
-  { name: 'NBC News',        needles: ['nbcnews', 'nbc news'] },
-  { name: 'CBS News',        needles: ['cbsnews', 'cbs news'] },
-  { name: 'ABC News',        needles: ['abcnews.go.com', 'abcnews', 'abc news'] },
-  { name: 'The Guardian',    needles: ['theguardian', 'the guardian', 'guardian'] },
-  { name: 'The Hill',        needles: ['thehill.com', 'thehill', 'the hill'] },
-  { name: 'ProPublica',      needles: ['propublica'] },
-  { name: 'The Atlantic',    needles: ['theatlantic', 'the atlantic', 'atlantic'] },
-  { name: 'Bloomberg',       needles: ['bloomberg'] },
-  { name: 'Axios',           needles: ['axios'] },
-  { name: 'BBC',             needles: ['bbc.com', 'bbc.co.uk', 'bbc'] },
-  { name: 'PBS',             needles: ['pbs.org', 'pbs'] },
-  { name: 'MSNBC',           needles: ['msnbc'] },
-  { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'] },
-  { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'] },
-];
-
-function matchOutlet(article) {
-  const parts = [];
-  if (article.url) {
-    try {
-      const u = new URL(article.url);
-      parts.push(u.hostname.toLowerCase().replace(/^www\./, ''));
-      parts.push(u.pathname.toLowerCase());
-    } catch {}
-  }
-  const src = typeof article.source === 'string'
-    ? article.source
-    : (article.source && (article.source.name || article.source.title)) || '';
-  if (src) parts.push(String(src).toLowerCase());
-  const hay = parts.join(' ');
-  if (!hay) return null;
-  for (const outlet of APPROVED_OUTLETS) {
-    for (const needle of outlet.needles) {
-      if (hay.includes(needle)) return outlet.name;
-    }
-  }
-  return null;
-}
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -164,36 +115,90 @@ function ChannelStatsCard({ passphrase }) {
   );
 }
 
+// Donut/circular gauge — opportunity = 100 - saturation_score
+function OpportunityDonut({ saturationScore, color, label }) {
+  const safeSat = Math.max(0, Math.min(100, Number(saturationScore) || 0));
+  const opportunity = 100 - safeSat;
+  const size = 110;
+  const stroke = 12;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dash = (opportunity / 100) * circumference;
+  return (
+    <div className="opp-donut" role="img" aria-label={`${label} — ${opportunity} of 100`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${circumference - dash}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={{ transition: 'stroke-dasharray 0.6s ease' }}
+        />
+        <text
+          x="50%"
+          y="48%"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="#ffffff"
+          fontSize="22"
+          fontWeight="800"
+        >
+          {opportunity}
+        </text>
+        <text
+          x="50%"
+          y="68%"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="rgba(255,255,255,0.55)"
+          fontSize="9"
+          fontWeight="700"
+          letterSpacing="1.2"
+        >
+          OPPORTUNITY
+        </text>
+      </svg>
+    </div>
+  );
+}
+
 function RecommendedStoryCard({ passphrase, userName }) {
   const navigate = useNavigate();
-  const [story, setStory] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState('');
 
-  const fetchTopStory = useCallback(async () => {
+  const fetchRecommended = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/find-stories?window=24h', {
+      // Warm the find-stories cache first so the recommended-story endpoint
+      // has a pool to score from. This is fast when cache is already hot.
+      try {
+        await fetch('/api/find-stories?window=24h', { headers: { 'x-passphrase': passphrase } });
+      } catch {}
+
+      const res = await fetch('/api/recommended-story', {
         headers: { 'x-passphrase': passphrase },
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to load stories');
-      }
-      const articles = await res.json();
-      // Prefer approved sources; fall back to first article overall.
-      let pick = null;
-      for (const a of articles || []) {
-        const outlet = matchOutlet(a);
-        if (outlet) { pick = { ...a, outlet }; break; }
-      }
-      if (!pick && articles && articles.length > 0) {
-        pick = { ...articles[0], outlet: null };
-      }
-      setStory(pick || null);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Failed to load recommended story');
+      setData(body);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -202,10 +207,11 @@ function RecommendedStoryCard({ passphrase, userName }) {
   }, [passphrase]);
 
   useEffect(() => {
-    fetchTopStory();
-  }, [fetchTopStory]);
+    fetchRecommended();
+  }, [fetchRecommended]);
 
   const handleGenerateScript = async () => {
+    const story = data?.article;
     if (!story) return;
     setGenerating(true);
     setGenerateError('');
@@ -216,7 +222,7 @@ function RecommendedStoryCard({ passphrase, userName }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
         body: JSON.stringify({
-          articleText: story.angle || story.summary || story.headline || '',
+          articleText: story.angle || data?.analysis?.best_angle || story.headline || '',
           articleTitle: story.headline || '',
           articleSource: story.outlet || story.source || '',
           angleNotes: '',
@@ -224,11 +230,11 @@ function RecommendedStoryCard({ passphrase, userName }) {
         }),
         signal: controller.signal,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Failed to generate script');
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Failed to generate script');
       navigate('/script-result', {
         state: {
-          script: data.script,
+          script: body.script,
           articleTitle: story.headline || '',
           articleSource: story.outlet || story.source || '',
         },
@@ -245,6 +251,14 @@ function RecommendedStoryCard({ passphrase, userName }) {
     }
   };
 
+  const story = data?.article;
+  const opp = data?.opportunity || { level: 'unknown', label: 'Unknown', color: '#9ca3af' };
+  const lifecycle = data?.lifecycle || 'Unknown';
+  const sat = data?.analysis?.saturation_score;
+  const subline = sat != null
+    ? `${opp.label} — ${lifecycle === 'Rising' ? 'Low saturation, rising fast' : lifecycle === 'Peak' ? 'Coverage building, still viable' : 'Saturated, likely too late'}`
+    : 'Scoring stories…';
+
   return (
     <div className="dash-card dash-card--recommended">
       <div className="dash-card-head">
@@ -252,7 +266,7 @@ function RecommendedStoryCard({ passphrase, userName }) {
         <button
           type="button"
           className="dash-icon-btn"
-          onClick={fetchTopStory}
+          onClick={fetchRecommended}
           disabled={loading}
           title="Refresh"
           aria-label="Refresh recommended story"
@@ -260,40 +274,59 @@ function RecommendedStoryCard({ passphrase, userName }) {
       </div>
 
       {loading && !story && (
-        <div className="dash-empty">Finding the top story…</div>
+        <div className="dash-empty">Scoring the top stories… (this can take ~30 seconds)</div>
       )}
       {error && !loading && (
         <div className="alert alert-error">{error}</div>
       )}
       {!loading && !error && !story && (
-        <div className="dash-empty">No stories available right now.</div>
+        <div className="dash-empty">No story available right now.</div>
       )}
 
       {story && (
         <>
-          <div className="recommended-meta">
-            {story.outlet && <span className="recommended-outlet">{story.outlet}</span>}
-            {!story.outlet && story.source && <span className="recommended-outlet recommended-outlet--off">{story.source}</span>}
-            {story.publishedAt && (
-              <span className="recommended-date">{formatDate(story.publishedAt)}</span>
-            )}
+          <div className="recommended-top">
+            <OpportunityDonut
+              saturationScore={sat}
+              color={opp.color}
+              label={opp.label}
+            />
+            <div className="recommended-top-info">
+              <div
+                className={`recommended-opp-tag recommended-opp-tag--${opp.level}`}
+                style={{ color: opp.color, borderColor: opp.color }}
+              >
+                {opp.label.toUpperCase()}
+                <span className="recommended-opp-sep">·</span>
+                {lifecycle.toUpperCase()}
+              </div>
+              <div className="recommended-meta">
+                {story.outlet && <span className="recommended-outlet">{story.outlet}</span>}
+                {!story.outlet && story.source && <span className="recommended-outlet recommended-outlet--off">{story.source}</span>}
+                {story.publishedAt && (
+                  <span className="recommended-date">{formatDate(story.publishedAt)}</span>
+                )}
+              </div>
+              {story.url ? (
+                <a
+                  className="recommended-headline"
+                  href={story.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {story.headline}
+                </a>
+              ) : (
+                <div className="recommended-headline">{story.headline}</div>
+              )}
+              <div className="recommended-subline">{subline}</div>
+            </div>
           </div>
-          {story.url ? (
-            <a
-              className="recommended-headline"
-              href={story.url}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {story.headline}
-            </a>
-          ) : (
-            <div className="recommended-headline">{story.headline}</div>
-          )}
-          {story.angle && (
+
+          {(story.angle || data?.analysis?.best_angle) && (
             <div className="recommended-angle">
               <span className="recommended-angle-label">Angle</span>
-              <p>{story.angle}</p>
+              <p>{data?.analysis?.best_angle || story.angle}</p>
             </div>
           )}
           {generateError && <div className="alert alert-error" style={{ marginTop: '0.5rem' }}>{generateError}</div>}
