@@ -10,6 +10,7 @@ import PresenceDropdown from './components/PresenceDropdown';
 import Notifications from './components/Notifications';
 import ListPage from './components/ListPage';
 import TopicPulse from './pages/TopicPulse';
+import ScriptResult from './pages/ScriptResult';
 import './App.css';
 
 const PERSISTENT_KEY       = 'team_hub_persistent_auth';
@@ -465,6 +466,7 @@ export default function App() {
               <TopicPulse passphrase={passphrase} userName={userName} />
             </section>
           } />
+          <Route path="/script-result" element={<ScriptResult />} />
         </Routes>
       </main>
 

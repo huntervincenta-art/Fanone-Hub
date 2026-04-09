@@ -17,6 +17,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const { XMLParser } = require('fast-xml-parser');
 const topicPulseRouter = require('./routes/topicPulse');
+const MFS_SYSTEM_PROMPT = require('./mfs-system-prompt');
 
 // Shared HTTPS agent with connection pooling to prevent ENOBUFS from too many open sockets
 const pooledAgent = new https.Agent({
@@ -1176,6 +1177,59 @@ app.post('/api/title-tool', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('POST /api/title-tool error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/generate-script — full MFS script package via Claude
+app.post('/api/generate-script', requireAuth, async (req, res) => {
+  const { articleText = '', articleTitle = '', articleSource = '', angleNotes = '' } = req.body || {};
+  if (!articleText.trim() && !articleTitle.trim()) {
+    return res.status(400).json({ error: 'articleText or articleTitle is required' });
+  }
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
+  }
+
+  const userMessage =
+    `Generate a full MFS script package from this story:\n\n` +
+    `Title: ${articleTitle}\n` +
+    `Source: ${articleSource}\n\n` +
+    `${articleText}\n\n` +
+    `${angleNotes ? 'Angle notes: ' + angleNotes : ''}`;
+
+  try {
+    const anthropicRes = await httpsRequest(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+      },
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        system: MFS_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      }
+    );
+
+    if (anthropicRes.status !== 200) {
+      const errBody = anthropicRes.body || {};
+      const errMsg = (errBody.error && errBody.error.message) || JSON.stringify(errBody);
+      console.error('[generate-script] Anthropic error | status:', anthropicRes.status, '| body:', JSON.stringify(errBody));
+      return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
+    }
+
+    const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
+
+    res.json({ script });
+  } catch (err) {
+    console.error('POST /api/generate-script error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

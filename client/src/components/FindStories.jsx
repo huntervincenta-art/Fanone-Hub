@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import HelpTooltip from './HelpTooltip';
 
 // ── Approved news outlets ──────────────────────────────────────────────────
@@ -73,6 +74,14 @@ function buildComments(article) {
 }
 
 export default function FindStories({ passphrase, userName }) {
+  const navigate = useNavigate();
+
+  // Script generator modal state
+  const [scriptModalArticle, setScriptModalArticle] = useState(null);
+  const [angleNotes, setAngleNotes] = useState('');
+  const [generatingScript, setGeneratingScript] = useState(false);
+  const [scriptError, setScriptError] = useState('');
+
   // Articles state (unchanged)
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -285,6 +294,49 @@ export default function FindStories({ passphrase, userName }) {
     }
   };
 
+  // ── Script generator ────────────────────────────────
+  const openScriptModal = (article) => {
+    setScriptModalArticle(article);
+    setAngleNotes('');
+    setScriptError('');
+  };
+  const closeScriptModal = () => {
+    if (generatingScript) return;
+    setScriptModalArticle(null);
+    setAngleNotes('');
+    setScriptError('');
+  };
+  const handleGenerateScript = async () => {
+    if (!scriptModalArticle) return;
+    setGeneratingScript(true);
+    setScriptError('');
+    try {
+      const res = await fetch('/api/generate-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({
+          articleText: scriptModalArticle.summary || scriptModalArticle.angle || scriptModalArticle.headline || '',
+          articleTitle: scriptModalArticle.headline || '',
+          articleSource: scriptModalArticle.outlet || scriptModalArticle.source || '',
+          angleNotes: angleNotes.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to generate script');
+      navigate('/script-result', {
+        state: {
+          script: data.script,
+          articleTitle: scriptModalArticle.headline || '',
+          articleSource: scriptModalArticle.outlet || scriptModalArticle.source || '',
+        },
+      });
+    } catch (err) {
+      setScriptError(err.message);
+    } finally {
+      setGeneratingScript(false);
+    }
+  };
+
   return (
     <div className="find-stories">
       <div className="find-stories-header">
@@ -429,6 +481,13 @@ export default function FindStories({ passphrase, userName }) {
                       >
                         {status === 'claiming' ? 'Claiming…' : status === 'claimed' ? 'Claimed!' : 'Claim It'}
                       </button>
+                      <button
+                        className="article-btn article-btn--script"
+                        onClick={() => openScriptModal(article)}
+                        type="button"
+                      >
+                        Generate Script
+                      </button>
                     </div>
 
                     {status === 'error' && (
@@ -569,6 +628,68 @@ export default function FindStories({ passphrase, userName }) {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Script generator modal ── */}
+      {scriptModalArticle && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget) closeScriptModal(); }}
+        >
+          <div className="modal-panel script-modal">
+            <div className="modal-header">
+              <span className="modal-title">Generate MFS Script</span>
+              <button className="modal-close" onClick={closeScriptModal} disabled={generatingScript}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="script-modal-article">
+                <div className="script-modal-label">Story</div>
+                <div className="script-modal-headline">{scriptModalArticle.headline}</div>
+                {(scriptModalArticle.outlet || scriptModalArticle.source) && (
+                  <div className="script-modal-source">
+                    {scriptModalArticle.outlet || scriptModalArticle.source}
+                  </div>
+                )}
+              </div>
+              <label className="script-modal-field-label" htmlFor="angle-notes">Angle Notes (optional)</label>
+              <textarea
+                id="angle-notes"
+                className="script-modal-textarea"
+                rows={4}
+                value={angleNotes}
+                onChange={e => setAngleNotes(e.target.value)}
+                placeholder="e.g. Focus on the law enforcement hypocrisy angle..."
+                disabled={generatingScript}
+              />
+              {scriptError && (
+                <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{scriptError}</div>
+              )}
+              <div className="script-modal-actions">
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={closeScriptModal}
+                  disabled={generatingScript}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={handleGenerateScript}
+                  disabled={generatingScript}
+                >
+                  {generatingScript ? (
+                    <>
+                      <span className="script-spinner" aria-hidden="true" />
+                      Generating…
+                    </>
+                  ) : 'Generate'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
