@@ -1107,7 +1107,10 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
         if (outlet) approved.push({ ...a, outlet });
         else fallback.push({ ...a, outlet: null });
       }
-      const candidatePool = (approved.length >= 3 ? approved : approved.concat(fallback)).slice(0, 3);
+      // Score up to 6 candidates so we have a real chance of finding a
+      // green/yellow opportunity instead of being stuck with whatever the
+      // first 3 happen to be.
+      const candidatePool = (approved.length >= 6 ? approved : approved.concat(fallback)).slice(0, 6);
 
       if (!candidatePool.length) {
         throw new Error('No candidate articles to score');
@@ -1132,15 +1135,38 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
 
       const valid = scored.filter(s => s.analysis && !s.error && typeof s.analysis.saturation_score === 'number');
 
-      // Pick the lowest saturation_score (= highest opportunity)
-      let pick;
-      if (valid.length > 0) {
-        valid.sort((a, b) => a.analysis.saturation_score - b.analysis.saturation_score);
-        pick = valid[0];
-      } else {
-        // Total fallback: use the first candidate without scoring
-        pick = scored[0];
+      // Sort highest-opportunity first (lowest saturation_score = best).
+      valid.sort((a, b) => a.analysis.saturation_score - b.analysis.saturation_score);
+
+      // Only recommend stories that score High or Moderate opportunity.
+      // If every candidate is Low opportunity, return an empty response so the
+      // dashboard can show the "no high-opportunity stories" empty state
+      // instead of recommending a bad story.
+      const acceptable = valid.filter(s => {
+        const sat = s.analysis.saturation_score;
+        return typeof sat === 'number' && sat <= 65; // ≤35 high, 36-65 moderate
+      });
+
+      if (acceptable.length === 0) {
+        const emptyData = {
+          article: null,
+          subject: null,
+          analysis: null,
+          opportunity: opportunityBucket(null),
+          lifecycle: 'Unknown',
+          empty: true,
+          empty_reason: 'no_high_opportunity',
+          empty_message: 'No high-opportunity stories right now. Check back soon.',
+          scored_at: new Date().toISOString(),
+          candidates_considered: candidatePool.length,
+          candidates_scored:     valid.length,
+        };
+        recommendedStoryCache = { data: emptyData, expiresAt: Date.now() + RECOMMENDED_STORY_CACHE_TTL_MS };
+        return emptyData;
       }
+
+      // Pick #1 highest-opportunity story.
+      const pick = acceptable[0];
 
       // Generate a one-line angle suggestion via Anthropic for the chosen story.
       // Prefer the topic-pulse synthesis best_angle when available; otherwise
@@ -1150,8 +1176,8 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
         angleLine = await generateAngleLine(pick.article.headline, pick.article.outlet || pick.article.source);
       }
 
-      const opportunity = opportunityBucket(pick.analysis?.saturation_score);
-      const lifecycle   = pick.analysis ? lifecycleLabel(pick.analysis) : 'Unknown';
+      const opportunity = opportunityBucket(pick.analysis.saturation_score);
+      const lifecycle   = lifecycleLabel(pick.analysis);
 
       const data = {
         article: {
@@ -1164,7 +1190,7 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
           angle:       angleLine,
         },
         subject: pick.subject,
-        analysis: pick.analysis ? {
+        analysis: {
           saturation_score: pick.analysis.saturation_score,
           best_angle:       pick.analysis.best_angle || angleLine || '',
           recommendation:   pick.analysis.recommendation || '',
@@ -1173,11 +1199,13 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
           youtube_video_count: pick.analysis.youtube_video_count || 0,
           avg_views_per_video: pick.analysis.avg_views_per_video || 0,
           upload_velocity:     pick.analysis.upload_velocity || 0,
-        } : null,
+        },
         opportunity,
         lifecycle,
+        empty: false,
         scored_at: new Date().toISOString(),
         candidates_considered: candidatePool.length,
+        candidates_scored:     valid.length,
       };
 
       recommendedStoryCache = { data, expiresAt: Date.now() + RECOMMENDED_STORY_CACHE_TTL_MS };

@@ -245,6 +245,7 @@ function RecommendedStoryCard({ passphrase, userName }) {
     }
   };
 
+  const isEmpty = data?.empty === true;
   const story = data?.article;
   const opp = data?.opportunity || { level: 'unknown', label: 'Unknown', color: '#9ca3af' };
   const lifecycle = data?.lifecycle || 'Unknown';
@@ -267,17 +268,22 @@ function RecommendedStoryCard({ passphrase, userName }) {
         >↻</button>
       </div>
 
-      {loading && !story && (
+      {loading && !data && (
         <div className="dash-empty">Scoring the top stories… (this can take ~30 seconds)</div>
       )}
       {error && !loading && (
         <div className="alert alert-error">{error}</div>
       )}
-      {!loading && !error && !story && (
+      {!loading && !error && isEmpty && (
+        <div className="dash-empty">
+          {data?.empty_message || 'No high-opportunity stories right now. Check back soon.'}
+        </div>
+      )}
+      {!loading && !error && !isEmpty && !story && (
         <div className="dash-empty">No story available right now.</div>
       )}
 
-      {story && (
+      {story && !isEmpty && (
         <>
           <div className="recommended-top">
             <OpportunityDonut
