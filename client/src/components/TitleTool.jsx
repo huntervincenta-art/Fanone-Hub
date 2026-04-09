@@ -171,31 +171,15 @@ export default function TitleTool({ passphrase, userName }) {
           <span className="title-tool-loading-dot" />
           <span className="title-tool-loading-dot" />
           <span className="title-tool-loading-dot" />
-          Generating angle and titles…
+          Generating MFS titles and thumbnail text…
         </div>
       )}
 
       {result && (
         <div className="title-tool-results">
-          {result.summary && (
-            <div className="title-tool-block">
-              <span className="title-tool-block-label">Summary</span>
-              <p className="title-tool-summary">{result.summary}</p>
-            </div>
-          )}
-
-          {result.angle && (
-            <div className="title-tool-block">
-              <span className="title-tool-block-label">Angle</span>
-              <div className="title-tool-angle">
-                <p>{result.angle}</p>
-              </div>
-            </div>
-          )}
-
           {result.titles && result.titles.length > 0 && (
             <div className="title-tool-block">
-              <span className="title-tool-block-label">Suggested Headlines</span>
+              <span className="title-tool-block-label">YouTube Titles</span>
               <div className="title-tool-titles">
                 {result.titles.map((title, idx) => {
                   const status = titleStatus[idx];
@@ -232,6 +216,21 @@ export default function TitleTool({ passphrase, userName }) {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {result.thumbnails && result.thumbnails.length > 0 && (
+            <div className="title-tool-block">
+              <span className="title-tool-block-label">Thumbnail Text</span>
+              <div className="title-tool-thumbnails">
+                {result.thumbnails.map((thumb, idx) => (
+                  <div className="title-tool-thumb-row" key={idx}>
+                    <span className="title-tool-title-num">{idx + 1}</span>
+                    <span className="title-tool-thumb-text">{thumb}</span>
+                    <CopyButton text={thumb} />
+                  </div>
+                ))}
               </div>
             </div>
           )}

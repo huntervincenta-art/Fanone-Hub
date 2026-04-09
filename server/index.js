@@ -1651,7 +1651,70 @@ app.get('/api/activity-log', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/title-tool — generate angle, summary, and titles from pasted text
+// POST /api/title-tool — generate MFS-style YouTube titles and thumbnail text
+const MFS_TITLE_SYSTEM_PROMPT = `You are the title generator for The Michael Fanone Show (MFS), a progressive political YouTube channel hosted by Michael Fanone — a former D.C. police officer who nearly died defending the Capitol on January 6, 2021. The channel averages 200K-500K views on top videos.
+
+Given an article, headline, or summary, generate 5 YouTube title options and 3 thumbnail text options.
+
+TITLE RULES:
+- First person discovery framing is the #1 performer. Use 'I Just Found...', 'I Just Uncovered...', 'I Just Discovered...' as the primary pattern.
+- Capitalize KEY dramatic words but not every word. Examples: 'I Just Found A HIDDEN BOMB In Trump's Beautiful Bill', 'I Just Uncovered The DARK MONEY Funding The NEXT MAGA Leader'
+- End every title with the alert siren emoji 🚨
+- Include 'We ALL Missed' or 'Nobody Noticed' framing when the story is about something hidden or overlooked
+- Use action verbs: Found, Uncovered, Discovered, Confronted, Exposed, Sent, Blasts
+- Trump reaction framing works: 'Trump PANICS As...', 'Trump Just ACCIDENTALLY EXPOSED...'
+- Third party action framing: '[Person] Just Made A SUSPICIOUS Announcement', '[Person] JUST FOUND Trump's Achilles Heel'
+- Keep titles under 70 characters when possible but prioritize impact over length
+- Never use generic clickbait that the video cannot deliver on
+- The title should make someone stop scrolling immediately
+
+THUMBNAIL TEXT RULES:
+- ALL CAPS always
+- 2-5 words maximum
+- Dramatic, punchy, standalone phrases
+- Examples of proven performers: FOLLOW THE MONEY, CHECKMATE!, THE FULL STORY, ICE GETS ARRESTED, TRUMP'S DARK SECRET EXPOSED!, NOBODY NOTICED THIS, WE CAN TAKE HIM DOWN!, THIS IS MAJOR
+- Use exclamation marks and question marks for energy
+- The thumbnail text should work even without reading the title
+
+OUTPUT FORMAT:
+# TITLES
+1. [title with 🚨]
+2. [title with 🚨]
+3. [title with 🚨]
+4. [title with 🚨]
+5. [title with 🚨]
+
+# THUMBNAIL TEXT
+1. [ALL CAPS TEXT]
+2. [ALL CAPS TEXT]
+3. [ALL CAPS TEXT]`;
+
+// Parse the markdown response into { titles, thumbnails }.
+function parseMfsTitleResponse(raw) {
+  const titles = [];
+  const thumbnails = [];
+  if (!raw) return { titles, thumbnails };
+
+  let section = null; // 'titles' | 'thumbnails' | null
+  for (const rawLine of raw.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^#+\s*titles?\s*$/i.test(line)) { section = 'titles'; continue; }
+    if (/^#+\s*thumbnail(\s*text)?\s*$/i.test(line)) { section = 'thumbnails'; continue; }
+    if (line.startsWith('#')) { section = null; continue; }
+
+    // Numbered list item: "1. Foo" or "1) Foo" or "- Foo"
+    const m = line.match(/^(?:\d+[.)]|-)\s*(.+)$/);
+    if (!m || !section) continue;
+    const value = m[1].replace(/^\[|\]$/g, '').trim();
+    if (!value) continue;
+    if (section === 'titles') titles.push(value);
+    else if (section === 'thumbnails') thumbnails.push(value);
+  }
+
+  return { titles: titles.slice(0, 5), thumbnails: thumbnails.slice(0, 3) };
+}
+
 app.post('/api/title-tool', requireAuth, async (req, res) => {
   const { text } = req.body;
   if (!text || !text.trim()) {
@@ -1671,7 +1734,7 @@ app.post('/api/title-tool', requireAuth, async (req, res) => {
       {
         model: 'claude-opus-4-6',
         max_tokens: 1024,
-        system: 'You are a political news producer for a left-leaning news channel. The current year is 2026. Donald Trump is the sitting President of the United States — always refer to him as "President Trump" or "Trump," never as "former president" or "ex-president." Given this article or text, provide: 1) A brief anti-Trump or pro-Democrat angle explaining why this story matters, 2) Five suggested punchy cable news style headlines, 3) A one sentence summary of the story. Return as JSON with fields: angle, titles (array of 5 strings), summary. Return only valid JSON, no other text.',
+        system: MFS_TITLE_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: text.trim() }],
       }
     );
@@ -1684,15 +1747,13 @@ app.post('/api/title-tool', requireAuth, async (req, res) => {
     }
 
     const raw = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return res.status(502).json({ error: 'Could not parse AI response' });
+    const { titles, thumbnails } = parseMfsTitleResponse(raw);
+    if (titles.length === 0 && thumbnails.length === 0) {
+      console.error('[title-tool] could not parse model output:', raw);
+      return res.status(502).json({ error: 'Could not parse AI response' });
+    }
 
-    const parsed = JSON.parse(jsonMatch[0]);
-    res.json({
-      angle: parsed.angle || '',
-      titles: Array.isArray(parsed.titles) ? parsed.titles.slice(0, 5) : [],
-      summary: parsed.summary || '',
-    });
+    res.json({ titles, thumbnails });
   } catch (err) {
     console.error('POST /api/title-tool error:', err.message);
     res.status(500).json({ error: err.message });
