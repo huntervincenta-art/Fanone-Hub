@@ -115,17 +115,16 @@ function ChannelStatsCard({ passphrase }) {
   );
 }
 
-// Donut/circular gauge — opportunity = 100 - saturation_score
-function OpportunityDonut({ saturationScore, color, label }) {
-  const safeSat = Math.max(0, Math.min(100, Number(saturationScore) || 0));
-  const opportunity = 100 - safeSat;
+// Donut/circular gauge — Fanone-lane relevance score (0–100)
+function OpportunityDonut({ score, color, label }) {
+  const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
   const size = 110;
   const stroke = 12;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const dash = (opportunity / 100) * circumference;
+  const dash = (safeScore / 100) * circumference;
   return (
-    <div className="opp-donut" role="img" aria-label={`${label} — ${opportunity} of 100`}>
+    <div className="opp-donut" role="img" aria-label={`${label} — ${safeScore} of 100`}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle
           cx={size / 2}
@@ -156,7 +155,7 @@ function OpportunityDonut({ saturationScore, color, label }) {
           fontSize="22"
           fontWeight="800"
         >
-          {opportunity}
+          {safeScore}
         </text>
         <text
           x="50%"
@@ -168,7 +167,7 @@ function OpportunityDonut({ saturationScore, color, label }) {
           fontWeight="700"
           letterSpacing="1.2"
         >
-          OPPORTUNITY
+          LANE FIT
         </text>
       </svg>
     </div>
@@ -248,11 +247,11 @@ function RecommendedStoryCard({ passphrase, userName }) {
   const isEmpty = data?.empty === true;
   const story = data?.article;
   const opp = data?.opportunity || { level: 'unknown', label: 'Unknown', color: '#9ca3af' };
-  const lifecycle = data?.lifecycle || 'Unknown';
-  const sat = data?.analysis?.saturation_score;
-  const subline = sat != null
-    ? `${opp.label} — ${lifecycle === 'Rising' ? 'Low saturation, rising fast' : lifecycle === 'Peak' ? 'Coverage building, still viable' : 'Saturated, likely too late'}`
-    : 'Scoring stories…';
+  const score = typeof data?.score === 'number'
+    ? data.score
+    : (data?.analysis?.saturation_score != null ? 100 - data.analysis.saturation_score : null);
+  // The opportunity label IS the subline copy from the spec.
+  const subline = score != null ? opp.label : 'Scoring stories…';
 
   return (
     <div className="dash-card dash-card--recommended">
@@ -269,7 +268,7 @@ function RecommendedStoryCard({ passphrase, userName }) {
       </div>
 
       {loading && !data && (
-        <div className="dash-empty">Scoring the top stories… (this can take ~30 seconds)</div>
+        <div className="dash-empty">Scoring stories for Fanone's lane…</div>
       )}
       {error && !loading && (
         <div className="alert alert-error">{error}</div>
@@ -287,7 +286,7 @@ function RecommendedStoryCard({ passphrase, userName }) {
         <>
           <div className="recommended-top">
             <OpportunityDonut
-              saturationScore={sat}
+              score={score}
               color={opp.color}
               label={opp.label}
             />
@@ -296,9 +295,7 @@ function RecommendedStoryCard({ passphrase, userName }) {
                 className={`recommended-opp-tag recommended-opp-tag--${opp.level}`}
                 style={{ color: opp.color, borderColor: opp.color }}
               >
-                {opp.label.toUpperCase()}
-                <span className="recommended-opp-sep">·</span>
-                {lifecycle.toUpperCase()}
+                LANE FIT · {score != null ? `${score}/100` : '—'}
               </div>
               <div className="recommended-meta">
                 {story.outlet && <span className="recommended-outlet">{story.outlet}</span>}

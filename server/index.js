@@ -176,6 +176,136 @@ function opportunityBucket(saturationScore) {
   return { level: 'low', label: 'Low Opportunity', color: '#c41e3a' };
 }
 
+// ── Fanone-lane relevance scoring ─────────────────────────────────────────────
+// Scores a news headline 0–100 based on how well it fits The Michael Fanone
+// Show's beat: a progressive, former-cop hosted political channel.
+//
+// The score is "how good is this story for MFS to cover", not "how uncovered".
+
+const FANONE_HIGH_KEYWORDS = [
+  // law enforcement / DOJ / accountability
+  'police', 'cop ', 'cops', 'law enforcement', 'sheriff', 'officer', 'officers',
+  'doj', 'justice department', 'fbi', 'attorney general', 'prosecutor',
+  'indict', 'indicted', 'indictment', 'charges', 'sentenc',
+  'capitol', 'january 6', 'jan. 6', 'jan 6', 'insurrection', 'riot',
+  'corruption', 'corrupt', 'bribe', 'kickback', 'pay-to-play',
+  'whistleblower', 'leak', 'leaked',
+  // immigration enforcement / ice
+  'ice ', 'i.c.e.', 'deport', 'detain', 'detention', 'border patrol',
+  'immigration enforcement', 'raid',
+  // courts & constitution
+  'court', 'judge', 'judges', 'ruling', 'supreme court', 'scotus',
+  'constitution', 'unconstitutional', 'first amendment', 'fourth amendment',
+  'due process', 'civil rights', 'voting rights',
+  // veterans / military
+  'veteran', 'veterans', 'military', 'troops', 'service member', 'pentagon',
+  // democracy / oversight / power
+  'democracy', 'authoritarian', 'autocrat', 'dictator', 'fascis',
+  'oversight', 'accountability', 'abuse of power', 'rule of law',
+  'pardon', 'commutation', 'martial law', 'emergency powers',
+];
+
+const FANONE_MEDIUM_KEYWORDS = [
+  'trump administration', 'white house', 'congress', 'senate', 'house of representatives',
+  'policy', 'legislation', 'bill', 'vote', 'hearing', 'subpoena',
+  'federal agency', 'agency', 'cabinet', 'secretary',
+  'government spending', 'budget', 'funding cut', 'shutdown',
+  'executive order', 'directive', 'memo',
+  'gop', 'maga', 'democrat', 'republican', 'biden', 'harris',
+];
+
+const FANONE_LOW_KEYWORDS = [
+  'celebrity', 'oscars', 'grammy', 'hollywood',
+  'kardashian', 'taylor swift', 'kanye',
+  'nfl', 'nba', 'mlb', 'soccer', 'olympic',
+  'box office', 'movie', 'tv show', 'streaming series',
+  'earnings', 'stock split', 'ipo', 'product launch', 'iphone', 'gadget',
+  'recipe', 'lifestyle', 'fashion', 'red carpet',
+];
+
+const FANONE_IMPACT_KEYWORDS = [
+  'killed', 'died', 'death', 'dying', 'fatal',
+  'family', 'families', 'children', 'kids', 'mother', 'father',
+  'fired', 'forced out', 'resign',
+  'crisis', 'scandal', 'cover up', 'cover-up',
+  'arrested', 'detained', 'raid',
+  'overturned', 'blocked', 'struck down', 'guilty', 'convicted',
+];
+
+function scoreHeadlineForFanone(article) {
+  const headline = String(article.headline || '').toLowerCase();
+  const description = String(article.description || '').toLowerCase();
+  const text = `${headline} ${headline} ${description}`; // headline weighted 2x
+
+  let score = 50;
+  const matched = { high: [], medium: [], low: [], impact: [] };
+
+  // HIGH relevance: +12 each, capped at +40
+  let highBonus = 0;
+  for (const kw of FANONE_HIGH_KEYWORDS) {
+    if (text.includes(kw)) {
+      highBonus += 12;
+      matched.high.push(kw.trim());
+    }
+  }
+  score += Math.min(highBonus, 40);
+
+  // MEDIUM relevance: +5 each, capped at +15
+  let medBonus = 0;
+  for (const kw of FANONE_MEDIUM_KEYWORDS) {
+    if (text.includes(kw)) {
+      medBonus += 5;
+      matched.medium.push(kw.trim());
+    }
+  }
+  score += Math.min(medBonus, 15);
+
+  // LOW relevance: -8 each (no cap, can sink the score hard)
+  for (const kw of FANONE_LOW_KEYWORDS) {
+    if (text.includes(kw)) {
+      score -= 8;
+      matched.low.push(kw.trim());
+    }
+  }
+
+  // Impact bonus: +5 each, capped at +10
+  let impactBonus = 0;
+  for (const kw of FANONE_IMPACT_KEYWORDS) {
+    if (text.includes(kw)) {
+      impactBonus += 5;
+      matched.impact.push(kw.trim());
+    }
+  }
+  score += Math.min(impactBonus, 10);
+
+  // Recency bonus: <6h +10, 6–12h +5, 12–24h 0, >24h -10
+  const pubMs = article.publishedAt ? new Date(article.publishedAt).getTime() : 0;
+  if (pubMs) {
+    const ageHours = (Date.now() - pubMs) / (1000 * 60 * 60);
+    if (ageHours <= 6) score += 10;
+    else if (ageHours <= 12) score += 5;
+    else if (ageHours > 24) score -= 10;
+  }
+
+  // Clamp to 0–100
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  return { score, matched };
+}
+
+function fanoneOpportunityBucket(score) {
+  if (score == null || isNaN(score)) {
+    return { level: 'unknown', label: 'Unknown', color: '#9ca3af' };
+  }
+  if (score >= 70) {
+    return { level: 'high', label: "Strong pick — right in Fanone's lane", color: '#22c55e' };
+  }
+  if (score >= 40) {
+    return { level: 'moderate', label: 'Solid option — needs a sharp angle', color: '#fbbf24' };
+  }
+  return { level: 'low', label: 'Off-lane — but could work with the right framing', color: '#c41e3a' };
+}
+
 // Self-contained headline fetcher — independent of /api/find-stories cache.
 // Pulls Google News RSS, applies the same political-keyword + junk filter as
 // find-stories, returns a normalized array of { headline, url, source, publishedAt }.
@@ -223,11 +353,12 @@ async function fetchHeadlinePool() {
 
   filteredPool.sort((a, b) => (b.pubMs || 0) - (a.pubMs || 0));
 
-  return filteredPool.slice(0, 15).map(a => ({
+  return filteredPool.slice(0, 30).map(a => ({
     headline:    a.title,
     url:         a.link,
     source:      a.sourceName,
     publishedAt: a.pubDate,
+    description: a.description,
   }));
 }
 
@@ -1085,11 +1216,6 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
       return res.json(data);
     }
 
-    const youtubeKey   = (process.env.YOUTUBE_API_KEY   || '').trim();
-    const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim();
-    if (!youtubeKey)   return res.status(503).json({ error: 'YOUTUBE_API_KEY is not configured' });
-    if (!anthropicKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not configured' });
-
     recommendedStoryInflight = (async () => {
       // Self-contained: pull headlines from Google News RSS independent of any
       // other endpoint's cache. This works on first dashboard load.
@@ -1099,85 +1225,36 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
         throw new Error('No articles available from Google News RSS');
       }
 
-      // Approved sources first; fall back to any.
-      const approved = [];
-      const fallback = [];
-      for (const a of pool) {
+      // Tag with approved-source matches but score everything in the pool.
+      // Approved sources get a small lane bonus on top of the relevance score.
+      const tagged = pool.map(a => {
         const outlet = matchApprovedOutlet(a);
-        if (outlet) approved.push({ ...a, outlet });
-        else fallback.push({ ...a, outlet: null });
-      }
-      // Score up to 6 candidates so we have a real chance of finding a
-      // green/yellow opportunity instead of being stuck with whatever the
-      // first 3 happen to be.
-      const candidatePool = (approved.length >= 6 ? approved : approved.concat(fallback)).slice(0, 6);
-
-      if (!candidatePool.length) {
-        throw new Error('No candidate articles to score');
-      }
-
-      console.log('[recommended-story] scoring candidates:', candidatePool.map(c => c.headline));
-
-      const scored = await Promise.all(
-        candidatePool.map(async (article) => {
-          const subject = extractTopicKeyword(article.headline);
-          if (!subject) {
-            return { article, subject: '', analysis: null, error: 'Could not extract topic keyword' };
-          }
-          try {
-            const analysis = await tpAnalyzeSubject(subject, youtubeKey, anthropicKey);
-            return { article, subject, analysis, error: analysis.error || null };
-          } catch (err) {
-            return { article, subject, analysis: null, error: err.message };
-          }
-        })
-      );
-
-      const valid = scored.filter(s => s.analysis && !s.error && typeof s.analysis.saturation_score === 'number');
-
-      // Sort highest-opportunity first (lowest saturation_score = best).
-      valid.sort((a, b) => a.analysis.saturation_score - b.analysis.saturation_score);
-
-      // Only recommend stories that score High or Moderate opportunity.
-      // If every candidate is Low opportunity, return an empty response so the
-      // dashboard can show the "no high-opportunity stories" empty state
-      // instead of recommending a bad story.
-      const acceptable = valid.filter(s => {
-        const sat = s.analysis.saturation_score;
-        return typeof sat === 'number' && sat <= 65; // ≤35 high, 36-65 moderate
+        return { ...a, outlet };
       });
 
-      if (acceptable.length === 0) {
-        const emptyData = {
-          article: null,
-          subject: null,
-          analysis: null,
-          opportunity: opportunityBucket(null),
-          lifecycle: 'Unknown',
-          empty: true,
-          empty_reason: 'no_high_opportunity',
-          empty_message: 'No high-opportunity stories right now. Check back soon.',
-          scored_at: new Date().toISOString(),
-          candidates_considered: candidatePool.length,
-          candidates_scored:     valid.length,
-        };
-        recommendedStoryCache = { data: emptyData, expiresAt: Date.now() + RECOMMENDED_STORY_CACHE_TTL_MS };
-        return emptyData;
-      }
+      // Score every article on Fanone-lane relevance.
+      const scored = tagged.map(article => {
+        const { score: baseScore, matched } = scoreHeadlineForFanone(article);
+        // +5 trust bonus if the article is from an approved source.
+        const finalScore = Math.max(0, Math.min(100, baseScore + (article.outlet ? 5 : 0)));
+        return { article, score: finalScore, matched };
+      });
 
-      // Pick #1 highest-opportunity story.
-      const pick = acceptable[0];
+      // Sort highest score first.
+      scored.sort((a, b) => b.score - a.score);
 
-      // Generate a one-line angle suggestion via Anthropic for the chosen story.
-      // Prefer the topic-pulse synthesis best_angle when available; otherwise
-      // call the dedicated angle generator.
-      let angleLine = pick.analysis?.best_angle || '';
-      if (!angleLine) {
-        angleLine = await generateAngleLine(pick.article.headline, pick.article.outlet || pick.article.source);
-      }
+      // Always pick the #1 highest-relevance story — no thresholding.
+      const pick = scored[0];
 
-      const opportunity = opportunityBucket(pick.analysis.saturation_score);
-      const lifecycle   = lifecycleLabel(pick.analysis);
+      console.log('[recommended-story] top 5:', scored.slice(0, 5).map(s => `${s.score} | ${s.article.headline}`));
+
+      // Generate a one-line MFS angle suggestion for the chosen story.
+      const angleLine = await generateAngleLine(
+        pick.article.headline,
+        pick.article.outlet || pick.article.source
+      );
+
+      const opportunity = fanoneOpportunityBucket(pick.score);
 
       const data = {
         article: {
@@ -1189,23 +1266,26 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
           publishedAt: pick.article.publishedAt || '',
           angle:       angleLine,
         },
-        subject: pick.subject,
-        analysis: {
-          saturation_score: pick.analysis.saturation_score,
-          best_angle:       pick.analysis.best_angle || angleLine || '',
-          recommendation:   pick.analysis.recommendation || '',
-          dominant_framing: pick.analysis.dominant_framing || '',
-          trends:           pick.analysis.trends || null,
-          youtube_video_count: pick.analysis.youtube_video_count || 0,
-          avg_views_per_video: pick.analysis.avg_views_per_video || 0,
-          upload_velocity:     pick.analysis.upload_velocity || 0,
-        },
+        score:        pick.score,
+        matched:      pick.matched,
         opportunity,
-        lifecycle,
+        // Back-compat shape for the existing donut/subline UI:
+        analysis: {
+          saturation_score: 100 - pick.score, // donut renders 100 - sat = score
+          best_angle:       angleLine,
+          recommendation:   '',
+          dominant_framing: '',
+          trends:           null,
+          youtube_video_count: 0,
+          avg_views_per_video: 0,
+          upload_velocity:     0,
+        },
+        lifecycle: opportunity.level === 'high' ? 'Rising'
+                 : opportunity.level === 'moderate' ? 'Peak'
+                 : 'Off-lane',
         empty: false,
         scored_at: new Date().toISOString(),
-        candidates_considered: candidatePool.length,
-        candidates_scored:     valid.length,
+        candidates_considered: scored.length,
       };
 
       recommendedStoryCache = { data, expiresAt: Date.now() + RECOMMENDED_STORY_CACHE_TTL_MS };
