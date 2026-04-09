@@ -3278,41 +3278,64 @@ html[data-theme="light"] .video-section-badge--x { background: rgba(0,0,0,0.07);
     margin-left: auto;
   }
 
-  /* Mobile dropdown — anchors to sticky header via position:absolute */
+  /* Mobile dropdown — fixed to viewport so it can scroll independently of
+     the page and never gets clipped past the fold. */
   .mobile-nav-overlay {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 198;
-    background: transparent;
+    z-index: 248;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
   }
   .mobile-nav-dropdown {
     display: flex;
     flex-direction: column;
-    position: absolute;
-    top: 100%;
+    position: fixed;
+    top: 56px; /* clears the sticky header on mobile */
     left: 0;
     right: 0;
+    max-height: calc(100vh - 64px);
+    max-height: calc(100dvh - 64px); /* iOS-safe viewport unit */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     background: var(--surface);
-    border-bottom: 2px solid var(--border);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    z-index: 200;
+    border-top: 1px solid var(--border);
+    border-bottom: 2px solid var(--accent);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    z-index: 250;
+  }
+  html[data-theme="light"] .mobile-nav-dropdown {
+    background: #ffffff;
   }
   .mobile-nav-link {
     display: flex;
     align-items: center;
-    padding: 0.9rem 1.25rem;
-    color: var(--muted);
-    font-size: 0.95rem;
-    font-weight: 500;
+    padding: 0.95rem 1.25rem;
+    min-height: 52px;
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 600;
     text-decoration: none;
     border-bottom: 1px solid var(--border);
     transition: background 0.15s, color 0.15s;
     position: relative;
+    flex-shrink: 0;
   }
   .mobile-nav-link:last-child { border-bottom: none; }
-  .mobile-nav-link:hover { background: var(--surface-raised); color: var(--text); }
-  .mobile-nav-link--active { color: var(--accent); background: rgba(79,135,247,0.08); }
+  .mobile-nav-link:hover,
+  .mobile-nav-link:active {
+    background: var(--surface-raised);
+    color: var(--text);
+  }
+  .mobile-nav-link--active {
+    color: var(--accent);
+    background: rgba(196, 30, 58, 0.10);
+    border-left: 3px solid var(--accent);
+    padding-left: calc(1.25rem - 3px);
+  }
 
   .presence-menu { right: -0.25rem; }
 
