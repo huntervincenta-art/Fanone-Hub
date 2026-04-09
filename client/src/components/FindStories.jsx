@@ -15,6 +15,21 @@ const APPROVED_OUTLETS = [
   { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'] },
   { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'] },
   { name: 'Washington Post', needles: ['washingtonpost', 'washington post'] },
+  { name: 'CNN',             needles: ['cnn.com', 'cnn'] },
+  { name: 'NBC News',        needles: ['nbcnews', 'nbc news'] },
+  { name: 'CBS News',        needles: ['cbsnews', 'cbs news'] },
+  { name: 'ABC News',        needles: ['abcnews.go.com', 'abcnews', 'abc news'] },
+  { name: 'The Guardian',    needles: ['theguardian', 'the guardian', 'guardian'] },
+  { name: 'The Hill',        needles: ['thehill.com', 'thehill', 'the hill'] },
+  { name: 'ProPublica',      needles: ['propublica'] },
+  { name: 'The Atlantic',    needles: ['theatlantic', 'the atlantic', 'atlantic'] },
+  { name: 'Bloomberg',       needles: ['bloomberg'] },
+  { name: 'Axios',           needles: ['axios'] },
+  { name: 'BBC',             needles: ['bbc.com', 'bbc.co.uk', 'bbc'] },
+  { name: 'PBS',             needles: ['pbs.org', 'pbs'] },
+  { name: 'MSNBC',           needles: ['msnbc'] },
+  { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'] },
+  { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'] },
 ];
 
 // Pull a usable source-name string out of whatever shape the API returns.
