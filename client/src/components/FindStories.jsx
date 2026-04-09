@@ -3,38 +3,74 @@ import { useNavigate } from 'react-router-dom';
 import HelpTooltip from './HelpTooltip';
 
 // ── Approved news outlets ──────────────────────────────────────────────────
-// Articles from any other domain are filtered out client-side.
-const APPROVED_OUTLETS = {
-  'time.com':            'TIME',
-  'reuters.com':         'Reuters',
-  'politico.com':        'Politico',
-  'apnews.com':          'AP',
-  'npr.org':             'NPR',
-  'thedailybeast.com':   'The Daily Beast',
-  'nytimes.com':         'New York Times',
-  'washingtonpost.com':  'Washington Post',
-};
+// Loose, partial-substring matching against the article's URL AND source name.
+// Each outlet has one or more "needles" — if any needle appears anywhere in the
+// article's URL or source name (case-insensitive), the article matches.
+const APPROVED_OUTLETS = [
+  { name: 'TIME',            needles: ['time.com', 'time magazine', 'time'] },
+  { name: 'Reuters',         needles: ['reuters'] },
+  { name: 'Politico',        needles: ['politico'] },
+  { name: 'AP',              needles: ['apnews', 'associated press', 'ap news'] },
+  { name: 'NPR',             needles: ['npr.org', 'npr'] },
+  { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'] },
+  { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'] },
+  { name: 'Washington Post', needles: ['washingtonpost', 'washington post'] },
+];
 
-function getOutletFromUrl(url) {
-  if (!url) return null;
-  try {
-    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-    for (const domain of Object.keys(APPROVED_OUTLETS)) {
-      if (host === domain || host.endsWith('.' + domain)) {
-        return { domain, name: APPROVED_OUTLETS[domain] };
-      }
+// Pull a usable source-name string out of whatever shape the API returns.
+function extractSourceName(article) {
+  if (!article) return '';
+  const s = article.source;
+  if (!s) return '';
+  if (typeof s === 'string') return s;
+  if (typeof s === 'object') return s.name || s.title || s.id || '';
+  return '';
+}
+
+// Build the haystack we search against: URL host + path + source name.
+function buildHaystack(article) {
+  const parts = [];
+  if (article.url) {
+    try {
+      const u = new URL(article.url);
+      parts.push(u.hostname.toLowerCase().replace(/^www\./, ''));
+      parts.push(u.pathname.toLowerCase());
+    } catch {
+      parts.push(String(article.url).toLowerCase());
     }
-  } catch {}
+  }
+  const srcName = extractSourceName(article);
+  if (srcName) parts.push(String(srcName).toLowerCase());
+  return parts.join(' ');
+}
+
+function matchOutlet(article) {
+  const hay = buildHaystack(article);
+  if (!hay) return null;
+  for (const outlet of APPROVED_OUTLETS) {
+    for (const needle of outlet.needles) {
+      if (hay.includes(needle)) return outlet.name;
+    }
+  }
   return null;
 }
 
+// Returns { articles, fallback } — fallback=true means no matches were found
+// and we're showing the full result set instead.
 function filterApprovedArticles(articles) {
-  return (articles || [])
+  const list = articles || [];
+  const matched = list
     .map(a => {
-      const outlet = getOutletFromUrl(a.url);
-      return outlet ? { ...a, outlet: outlet.name } : null;
+      const name = matchOutlet(a);
+      return name ? { ...a, outlet: name } : null;
     })
     .filter(Boolean);
+
+  if (matched.length > 0) {
+    return { articles: matched, fallback: false };
+  }
+  // Fallback: no approved outlets found — show everything, untagged.
+  return { articles: list, fallback: true };
 }
 
 function todayISO() {
@@ -84,6 +120,7 @@ export default function FindStories({ passphrase, userName }) {
 
   // Articles state (unchanged)
   const [articles, setArticles] = useState([]);
+  const [sourceFallback, setSourceFallback] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionStatus, setActionStatus] = useState({});
@@ -121,7 +158,9 @@ export default function FindStories({ passphrase, userName }) {
         throw new Error(data.error || 'Failed to fetch stories');
       }
       const raw = await res.json();
-      setArticles(filterApprovedArticles(raw));
+      const { articles: filtered, fallback } = filterApprovedArticles(raw);
+      setArticles(filtered);
+      setSourceFallback(fallback);
       setActionStatus({});
     } catch (err) {
       setError(err.message);
@@ -407,6 +446,11 @@ export default function FindStories({ passphrase, userName }) {
         <>
           {loading && <div className="find-stories-loading-bar" />}
           {error && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{error}</div>}
+          {sourceFallback && articles.length > 0 && (
+            <div className="source-fallback-notice">
+              No results from preferred sources — showing all results.
+            </div>
+          )}
 
           {loading && articles.length === 0 ? (
             <div className="find-stories-empty">Fetching latest political news and generating angles…</div>

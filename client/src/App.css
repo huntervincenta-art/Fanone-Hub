@@ -1271,6 +1271,16 @@ body {
   letter-spacing: 0.04em;
 }
 
+.source-fallback-notice {
+  background: rgba(196, 30, 58, 0.10);
+  border: 1px solid rgba(196, 30, 58, 0.35);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
 .article-outlet-badge {
   display: inline-block;
   padding: 2px 8px;
