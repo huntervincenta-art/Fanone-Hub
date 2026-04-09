@@ -1208,6 +1208,7 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
           'x-api-key': ANTHROPIC_API_KEY,
           'anthropic-version': '2023-06-01',
         },
+        timeout: 120000,
       },
       {
         model: 'claude-sonnet-4-20250514',

@@ -349,6 +349,8 @@ export default function FindStories({ passphrase, userName }) {
     if (!scriptModalArticle) return;
     setGeneratingScript(true);
     setScriptError('');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
     try {
       const res = await fetch('/api/generate-script', {
         method: 'POST',
@@ -359,6 +361,7 @@ export default function FindStories({ passphrase, userName }) {
           articleSource: scriptModalArticle.outlet || scriptModalArticle.source || '',
           angleNotes: angleNotes.trim(),
         }),
+        signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to generate script');
@@ -370,8 +373,13 @@ export default function FindStories({ passphrase, userName }) {
         },
       });
     } catch (err) {
-      setScriptError(err.message);
+      if (err.name === 'AbortError') {
+        setScriptError('Script generation timed out after 2 minutes. Try again.');
+      } else {
+        setScriptError(err.message);
+      }
     } finally {
+      clearTimeout(timeoutId);
       setGeneratingScript(false);
     }
   };
