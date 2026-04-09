@@ -1,6 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import HelpTooltip from './HelpTooltip';
 
+// ── Approved news outlets ──────────────────────────────────────────────────
+// Articles from any other domain are filtered out client-side.
+const APPROVED_OUTLETS = {
+  'time.com':            'TIME',
+  'reuters.com':         'Reuters',
+  'politico.com':        'Politico',
+  'apnews.com':          'AP',
+  'npr.org':             'NPR',
+  'thedailybeast.com':   'The Daily Beast',
+  'nytimes.com':         'New York Times',
+  'washingtonpost.com':  'Washington Post',
+};
+
+function getOutletFromUrl(url) {
+  if (!url) return null;
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    for (const domain of Object.keys(APPROVED_OUTLETS)) {
+      if (host === domain || host.endsWith('.' + domain)) {
+        return { domain, name: APPROVED_OUTLETS[domain] };
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function filterApprovedArticles(articles) {
+  return (articles || [])
+    .map(a => {
+      const outlet = getOutletFromUrl(a.url);
+      return outlet ? { ...a, outlet: outlet.name } : null;
+    })
+    .filter(Boolean);
+}
+
 function todayISO() {
   const d = new Date().toLocaleDateString('en-CA');
   console.log('[FindStories] todayISO:', d, '| raw UTC:', new Date().toISOString());
@@ -76,7 +111,8 @@ export default function FindStories({ passphrase, userName }) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to fetch stories');
       }
-      setArticles(await res.json());
+      const raw = await res.json();
+      setArticles(filterApprovedArticles(raw));
       setActionStatus({});
     } catch (err) {
       setError(err.message);
@@ -323,7 +359,7 @@ export default function FindStories({ passphrase, userName }) {
           {loading && articles.length === 0 ? (
             <div className="find-stories-empty">Fetching latest political news and generating angles…</div>
           ) : articles.length === 0 && !loading ? (
-            <div className="find-stories-empty">No articles found. Try refreshing or switching to Last 24h.</div>
+            <div className="find-stories-empty">No articles from approved outlets found. Try refreshing or switching to Last 24h.</div>
           ) : (
             <div className="article-grid">
               {articles.map(article => {
@@ -332,7 +368,11 @@ export default function FindStories({ passphrase, userName }) {
                 return (
                   <div className={`article-card${done ? ' article-card--done' : ''}`} key={article.id}>
                     <div className="article-card-meta">
-                      {article.source && <span className="article-source">{article.source}</span>}
+                      {(article.outlet || article.source) && (
+                        <span className="article-source article-outlet-badge">
+                          {article.outlet || article.source}
+                        </span>
+                      )}
                       {article.publishedAt && (
                         <span
                           className="article-time"

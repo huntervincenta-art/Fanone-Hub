@@ -1271,6 +1271,15 @@ body {
   letter-spacing: 0.04em;
 }
 
+.article-outlet-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: rgba(196, 30, 58, 0.12);
+  color: var(--accent);
+}
+
 .article-time {
   font-size: 0.72rem;
   color: var(--muted);
