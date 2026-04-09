@@ -12,6 +12,7 @@ import ListPage from './components/ListPage';
 import TopicPulse from './pages/TopicPulse';
 import ScriptResult from './pages/ScriptResult';
 import Scripts from './pages/Scripts';
+import Dashboard from './pages/Dashboard';
 import './App.css';
 
 const PERSISTENT_KEY       = 'team_hub_persistent_auth';
@@ -266,7 +267,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape' && submitOpen) { setSubmitOpen(false); return; }
-      if (e.key === 'n' && !submitOpen && location.pathname === '/') {
+      if (e.key === 'n' && !submitOpen && location.pathname === '/stories') {
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         setSubmitOpen(true);
@@ -295,6 +296,12 @@ export default function App() {
           <Link
             className={`app-nav-link app-nav-link--primary${isActive('/') ? ' app-nav-link--active' : ''}`}
             to="/"
+          >
+            Dashboard
+          </Link>
+          <Link
+            className={`app-nav-link${isActive('/stories') ? ' app-nav-link--active' : ''}`}
+            to="/stories"
           >
             Stories
           </Link>
@@ -407,7 +414,8 @@ export default function App() {
           <>
             <div className="mobile-nav-overlay" onClick={() => setMenuOpen(false)} />
             <nav className="mobile-nav-dropdown">
-              <Link className={`mobile-nav-link${isActive('/') ? ' mobile-nav-link--active' : ''}`} to="/">Stories</Link>
+              <Link className={`mobile-nav-link${isActive('/') ? ' mobile-nav-link--active' : ''}`} to="/">Dashboard</Link>
+              <Link className={`mobile-nav-link${isActive('/stories') ? ' mobile-nav-link--active' : ''}`} to="/stories">Stories</Link>
               <Link className={`mobile-nav-link${isActive('/find-stories') ? ' mobile-nav-link--active' : ''}`} to="/find-stories">Find Stories</Link>
               <Link className={`mobile-nav-link${isActive('/scripts') ? ' mobile-nav-link--active' : ''}`} to="/scripts">Scripts</Link>
               <Link className={`mobile-nav-link${isActive('/title-tool') ? ' mobile-nav-link--active' : ''}`} to="/title-tool">Title Tool</Link>
@@ -426,9 +434,10 @@ export default function App() {
         )}
       </header>
 
-      <main className={`app-main${location.pathname === '/' ? ' app-main--hub' : ''}`}>
+      <main className={`app-main${location.pathname === '/stories' ? ' app-main--hub' : ''}`}>
         <Routes>
-          <Route path="/" element={
+          <Route path="/" element={<Dashboard passphrase={passphrase} userName={userName} />} />
+          <Route path="/stories" element={
             <StoryFeed
               stories={stories}
               loading={feedLoading}

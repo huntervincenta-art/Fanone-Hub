@@ -726,19 +726,23 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                       >
                         {editingId === story.id ? 'Cancel' : 'Edit'}
                       </button>
-                      {story.flagged ? (
-                        userName === ADMIN_USER && (
-                          <>
-                            <button className="hub-action-btn hub-action-btn--approve" onClick={() => handleApprove(story.id)} title="Approve story">
-                              Approve
-                            </button>
-                            <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDecline(story.id)} title="Decline and delete story">
-                              Decline
-                            </button>
-                          </>
-                        )
-                      ) : (
-                        <button className="hub-action-btn" onClick={() => handleFlag(story.id)} title="Flag for approval">⚑</button>
+                      <button
+                        className={`hub-action-btn hub-action-btn--flag${story.flagged ? ' hub-action-btn--flag-active' : ''}`}
+                        onClick={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
+                        title={story.flagged ? 'Unflag this story' : 'Flag a problem on this video'}
+                        aria-pressed={!!story.flagged}
+                      >
+                        ⚑
+                      </button>
+                      {story.flagged && userName === ADMIN_USER && (
+                        <>
+                          <button className="hub-action-btn hub-action-btn--approve" onClick={() => handleApprove(story.id)} title="Approve story">
+                            Approve
+                          </button>
+                          <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDecline(story.id)} title="Decline and delete story">
+                            Decline
+                          </button>
+                        </>
                       )}
                       {story.host === userName && (
                         <button
@@ -758,24 +762,6 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                           title="Let the host know you're working on it"
                         >
                           {workingOnIds.has(story.id) ? '…' : 'Working on it'}
-                        </button>
-                      )}
-                      {story.duplicate ? (
-                        <button
-                          className="hub-action-btn hub-action-btn--unduplicate"
-                          onClick={() => handleUnduplicate(story.id)}
-                          title="Dismiss duplicate flag"
-                        >
-                          ⚠️ Dismiss
-                        </button>
-                      ) : (
-                        <button
-                          className="hub-action-btn hub-action-btn--duplicate"
-                          onClick={() => handleDuplicate(story)}
-                          disabled={duplicatingIds.has(story.id)}
-                          title="Flag as duplicate"
-                        >
-                          {duplicatingIds.has(story.id) ? '…' : '⚠️'}
                         </button>
                       )}
                       {userName === ADMIN_USER && (
@@ -1003,33 +989,19 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                           <span className="hub-comment-badge">{commentCounts[story.id]}</span>
                         )}
                       </span>
-                      {story.flagged ? (
-                        userName === ADMIN_USER && (
-                          <>
-                            <button className="hub-action-btn hub-action-btn--approve" onClick={() => handleApprove(story.id)} title="Approve story">Approve</button>
-                            <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDecline(story.id)} title="Decline and delete story">Decline</button>
-                          </>
-                        )
-                      ) : (
-                        <button className="hub-action-btn" onClick={() => handleFlag(story.id)} title="Flag for approval">⚑</button>
-                      )}
-                      {story.duplicate ? (
-                        <button
-                          className="hub-action-btn hub-action-btn--unduplicate"
-                          onClick={() => handleUnduplicate(story.id)}
-                          title="Dismiss duplicate flag"
-                        >
-                          ⚠️ Dismiss
-                        </button>
-                      ) : (
-                        <button
-                          className="hub-action-btn hub-action-btn--duplicate"
-                          onClick={() => handleDuplicate(story)}
-                          disabled={duplicatingIds.has(story.id)}
-                          title="Flag as duplicate"
-                        >
-                          {duplicatingIds.has(story.id) ? '…' : '⚠️'}
-                        </button>
+                      <button
+                        className={`hub-action-btn hub-action-btn--flag${story.flagged ? ' hub-action-btn--flag-active' : ''}`}
+                        onClick={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
+                        title={story.flagged ? 'Unflag this story' : 'Flag a problem on this video'}
+                        aria-pressed={!!story.flagged}
+                      >
+                        ⚑
+                      </button>
+                      {story.flagged && userName === ADMIN_USER && (
+                        <>
+                          <button className="hub-action-btn hub-action-btn--approve" onClick={() => handleApprove(story.id)} title="Approve story">Approve</button>
+                          <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDecline(story.id)} title="Decline and delete story">Decline</button>
+                        </>
                       )}
                       <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDelete(story.id)} title="Delete">
                         <TrashIcon />

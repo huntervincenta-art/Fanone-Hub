@@ -516,20 +516,37 @@ app.post('/api/stories/:id/claim', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/stories/:id/flag — flag a story for Hunter's approval
+// POST /api/stories/:id/flag — flag a problem on a host's video
 app.post('/api/stories/:id/flag', requireAuth, async (req, res) => {
   const { user } = req.body;
   try {
     const story = await Story.findByIdAndUpdate(req.params.id, { flagged: true }, { new: true });
     if (!story) return res.status(404).json({ error: 'Story not found' });
     addLog(user || 'Unknown', 'story_flagged', story.headline);
-    if (HUNTER_NTFY_TOPIC) {
-      console.log('[ntfy:story-flagged] Click: https://odhub.xyz');
-      sendNtfyToTopic(HUNTER_NTFY_TOPIC, 'Story Flagged', `A story has been flagged for your review: ${story.headline}`, 'https://odhub.xyz').catch(() => {});
+    const flagMessage = 'Hunter flagged a problem on your video. Check the hub.';
+    const hostTopic = getPersonalTopic(story.host);
+    const targetTopic = hostTopic || NTFY_TOPIC;
+    if (targetTopic) {
+      console.log(`[ntfy:story-flagged] topic=${targetTopic} story="${story.headline}"`);
+      sendNtfyToTopic(targetTopic, 'Story Flagged', flagMessage, 'https://odhub.xyz').catch(() => {});
     }
     res.json({ ok: true });
   } catch (err) {
     console.error('POST /api/stories/:id/flag error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/stories/:id/unflag — clear the flag
+app.post('/api/stories/:id/unflag', requireAuth, async (req, res) => {
+  const { user } = req.body;
+  try {
+    const story = await Story.findByIdAndUpdate(req.params.id, { flagged: false }, { new: true });
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+    addLog(user || 'Unknown', 'story_unflagged', story.headline);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /api/stories/:id/unflag error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
