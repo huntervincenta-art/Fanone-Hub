@@ -41,6 +41,107 @@ function formatDate(iso) {
   });
 }
 
+function formatCount(n) {
+  if (n == null || isNaN(n)) return '—';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (n >= 1_000_000)     return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1_000)         return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
+
+function formatRelative(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms)) return '';
+  if (ms < 60_000) return 'just now';
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function ChannelStatsCard({ passphrase }) {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/youtube-stats', {
+        headers: { 'x-passphrase': passphrase },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to load channel stats');
+      setStats(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [passphrase]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  return (
+    <section className="channel-stats-card">
+      <div className="channel-stats-thumb">
+        {stats && stats.thumbnail ? (
+          <img src={stats.thumbnail} alt={stats.channelName} />
+        ) : (
+          <div className="channel-stats-thumb-placeholder" aria-hidden="true">MFS</div>
+        )}
+      </div>
+      <div className="channel-stats-body">
+        <div className="channel-stats-name">
+          {stats?.channelName || 'The Michael Fanone Show'}
+        </div>
+        {error ? (
+          <div className="channel-stats-error">{error}</div>
+        ) : (
+          <div className="channel-stats-row">
+            <div className="channel-stats-metric channel-stats-metric--primary">
+              <span className="channel-stats-value">
+                {stats && !stats.hiddenSubscriberCount ? formatCount(stats.subscriberCount) : '—'}
+              </span>
+              <span className="channel-stats-label">subscribers</span>
+            </div>
+            <div className="channel-stats-metric">
+              <span className="channel-stats-value">{stats ? formatCount(stats.viewCount) : '—'}</span>
+              <span className="channel-stats-label">views</span>
+            </div>
+            <div className="channel-stats-metric">
+              <span className="channel-stats-value">{stats ? formatCount(stats.videoCount) : '—'}</span>
+              <span className="channel-stats-label">videos</span>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="channel-stats-meta">
+        {loading && <span className="channel-stats-loading">Loading…</span>}
+        {!loading && stats && (
+          <span className="channel-stats-updated">
+            Updated {formatRelative(stats.fetchedAt)}
+          </span>
+        )}
+        <button
+          type="button"
+          className="channel-stats-refresh"
+          onClick={fetchStats}
+          disabled={loading}
+          aria-label="Refresh channel stats"
+        >
+          ↻
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function ScriptDetail({ script }) {
   const sections = useMemo(() => parseScript(script.generatedScript), [script.generatedScript]);
   return (
@@ -98,6 +199,9 @@ export default function Dashboard({ passphrase, userName }) {
 
   return (
     <div className="dashboard">
+      {/* ── YouTube channel stats ── */}
+      <ChannelStatsCard passphrase={passphrase} />
+
       {/* ── Title Generator section ── */}
       <section className="dashboard-card">
         <div className="dashboard-card-header">

@@ -65,6 +65,10 @@ const findStoriesCache = new Map(); // cacheKey -> { data, expiresAt }
 const findVideosCache  = new Map(); // queryKey -> { data, expiresAt }
 const twitterSearchCache = new Map(); // queryKey -> { data, expiresAt }
 
+const YOUTUBE_STATS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const MFS_CHANNEL_ID = 'UCihIswdXcJjiqSZ3nKss6ww';
+let youtubeStatsCache = null; // { data, expiresAt }
+
 // In-memory presence store: name -> lastSeen (ms timestamp)
 const presenceStore = new Map();
 const PRESENCE_TTL_MS = 90 * 1000;
@@ -811,6 +815,52 @@ app.get('/api/find-videos', requireAuth, async (req, res) => {
     res.json(videos);
   } catch (err) {
     console.error('[find-videos] exception:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/youtube-stats — live channel stats for The Michael Fanone Show
+app.get('/api/youtube-stats', requireAuth, async (req, res) => {
+  try {
+    if (youtubeStatsCache && youtubeStatsCache.expiresAt > Date.now()) {
+      return res.json(youtubeStatsCache.data);
+    }
+
+    const apiKey = (process.env.YOUTUBE_API_KEY || '').trim();
+    if (!apiKey) {
+      return res.status(503).json({ error: 'YOUTUBE_API_KEY is not set in environment variables' });
+    }
+
+    const ytUrl = `https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id=${MFS_CHANNEL_ID}&key=${apiKey}`;
+    const ytRes = await httpsRequest(ytUrl, { headers: { 'User-Agent': 'MFSHub/1.0' } });
+
+    if (ytRes.status !== 200 || !ytRes.body || !Array.isArray(ytRes.body.items) || ytRes.body.items.length === 0) {
+      const errCode = (ytRes.body && ytRes.body.error && ytRes.body.error.code) || ytRes.status;
+      const errMsg  = (ytRes.body && ytRes.body.error && ytRes.body.error.message) || `HTTP ${ytRes.status}`;
+      console.error('[youtube-stats] failed | code:', errCode, '| message:', errMsg);
+      return res.status(502).json({ error: `YouTube API error (${errCode}): ${errMsg}` });
+    }
+
+    const item = ytRes.body.items[0];
+    const snippet = item.snippet || {};
+    const stats   = item.statistics || {};
+    const thumbs  = snippet.thumbnails || {};
+
+    const data = {
+      channelId:       item.id || MFS_CHANNEL_ID,
+      channelName:     snippet.title || 'The Michael Fanone Show',
+      thumbnail:       (thumbs.high && thumbs.high.url) || (thumbs.medium && thumbs.medium.url) || (thumbs.default && thumbs.default.url) || '',
+      subscriberCount: Number(stats.subscriberCount || 0),
+      viewCount:       Number(stats.viewCount || 0),
+      videoCount:      Number(stats.videoCount || 0),
+      hiddenSubscriberCount: !!stats.hiddenSubscriberCount,
+      fetchedAt:       new Date().toISOString(),
+    };
+
+    youtubeStatsCache = { data, expiresAt: Date.now() + YOUTUBE_STATS_CACHE_TTL_MS };
+    res.json(data);
+  } catch (err) {
+    console.error('[youtube-stats] exception:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
