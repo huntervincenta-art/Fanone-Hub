@@ -187,12 +187,6 @@ function RecommendedStoryCard({ passphrase, userName }) {
     setLoading(true);
     setError('');
     try {
-      // Warm the find-stories cache first so the recommended-story endpoint
-      // has a pool to score from. This is fast when cache is already hot.
-      try {
-        await fetch('/api/find-stories?window=24h', { headers: { 'x-passphrase': passphrase } });
-      } catch {}
-
       const res = await fetch('/api/recommended-story', {
         headers: { 'x-passphrase': passphrase },
       });

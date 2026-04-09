@@ -176,6 +176,95 @@ function opportunityBucket(saturationScore) {
   return { level: 'low', label: 'Low Opportunity', color: '#c41e3a' };
 }
 
+// Self-contained headline fetcher — independent of /api/find-stories cache.
+// Pulls Google News RSS, applies the same political-keyword + junk filter as
+// find-stories, returns a normalized array of { headline, url, source, publishedAt }.
+async function fetchHeadlinePool() {
+  const rssUrl = 'https://news.google.com/rss/search?q=Trump+OR+Democrats+OR+Republicans+OR+Congress+OR+MAGA&hl=en-US&gl=US&ceid=US:en';
+  const rssRes = await httpsRequest(rssUrl, { headers: { 'User-Agent': 'Mozilla/5.0 TeamHub/1.0' } });
+  if (rssRes.status !== 200 || typeof rssRes.body !== 'string') {
+    throw new Error(`Google News RSS fetch failed (status ${rssRes.status})`);
+  }
+  const rssParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+  const parsed = rssParser.parse(rssRes.body);
+  const rawItems = [].concat(parsed?.rss?.channel?.item || []);
+  if (rawItems.length === 0) throw new Error('Google News RSS returned no items');
+
+  const POLITICAL_KEYWORDS = /trump|white house|congress|senate|maga|democrat|republican|biden|political/i;
+  const JUNK_TITLE_WORDS   = /\bnfl\b|\bnba\b|\bmlb\b|\bmovie\b|\bcelebrity\b|\bsports?\b|\bgame\b|\bscore\b|\bactor\b/i;
+
+  const seen = new Set();
+  const pool = [];
+  for (const item of rawItems) {
+    const title = typeof item.title === 'string' ? item.title
+      : (item.title?.['#text'] || String(item.title || ''));
+    const link = typeof item.link === 'string' ? item.link : '';
+    const pubDate = item.pubDate ? String(item.pubDate) : '';
+    const pubMs = pubDate ? new Date(pubDate).getTime() : 0;
+    const sourceName = typeof item.source === 'string' ? item.source
+      : (item.source?.['#text'] || '');
+    const description = typeof item.description === 'string' ? item.description : '';
+    if (!title || !link || seen.has(link)) continue;
+    seen.add(link);
+    pool.push({ title, link, pubDate, pubMs, sourceName, description });
+  }
+
+  // Apply 24h time window then political keyword + junk filter, with graceful
+  // fallbacks if too few pass each step.
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const timeFiltered = pool.filter(a => !a.pubMs || a.pubMs >= cutoff);
+  const workingPool  = timeFiltered.length >= 3 ? timeFiltered : pool;
+  const keywordFiltered = workingPool.filter(a =>
+    POLITICAL_KEYWORDS.test(a.title) || POLITICAL_KEYWORDS.test(a.description)
+  );
+  const fullFiltered = keywordFiltered.filter(a => !JUNK_TITLE_WORDS.test(a.title));
+  const filteredPool = fullFiltered.length >= 3 ? fullFiltered
+    : keywordFiltered.length >= 3 ? keywordFiltered : workingPool;
+
+  filteredPool.sort((a, b) => (b.pubMs || 0) - (a.pubMs || 0));
+
+  return filteredPool.slice(0, 15).map(a => ({
+    headline:    a.title,
+    url:         a.link,
+    source:      a.sourceName,
+    publishedAt: a.pubDate,
+  }));
+}
+
+// Quick one-line angle suggestion via Anthropic for the recommended story.
+async function generateAngleLine(headline, source) {
+  if (!ANTHROPIC_API_KEY) return '';
+  try {
+    const anthropicRes = await httpsRequest(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        timeout: 20000,
+      },
+      {
+        model: 'claude-opus-4-6',
+        max_tokens: 180,
+        system: 'You are a producer for The Michael Fanone Show, a progressive political YouTube channel hosted by former DC police officer Michael Fanone. Suggest one strong editorial angle the show could take on a news story. Be concrete, specific, and under 35 words. Return only the angle as plain prose — no preamble, no labels, no quotation marks.',
+        messages: [{
+          role: 'user',
+          content: `Suggest one strong editorial angle for The Michael Fanone Show based on this headline: "${headline}"${source ? ` (source: ${source})` : ''}`,
+        }],
+      }
+    );
+    if (anthropicRes.status !== 200) return '';
+    const text = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    return text.trim().replace(/^["']|["']$/g, '');
+  } catch (err) {
+    console.warn('[recommended-story] angle suggestion failed:', err.message);
+    return '';
+  }
+}
+
 function lifecycleLabel(analysis) {
   const sat = analysis?.saturation_score ?? 50;
   const momentum = analysis?.trends?.momentum;
@@ -1002,21 +1091,18 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
     if (!anthropicKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not configured' });
 
     recommendedStoryInflight = (async () => {
-      // Source the article pool from the existing find-stories cache when warm.
-      // The dashboard typically warms it via /api/find-stories anyway; if cold,
-      // we tell the caller to retry shortly rather than duplicate the heavy
-      // RSS+Anthropic enrichment pipeline.
-      const cached24h = findStoriesCache.get('24h') || findStoriesCache.get('6h');
-      const articles = (cached24h && Array.isArray(cached24h.data)) ? cached24h.data : [];
+      // Self-contained: pull headlines from Google News RSS independent of any
+      // other endpoint's cache. This works on first dashboard load.
+      const pool = await fetchHeadlinePool();
 
-      if (!articles.length) {
-        throw new Error('No articles available — find-stories cache is cold. Open Find Stories first or wait a moment.');
+      if (!pool.length) {
+        throw new Error('No articles available from Google News RSS');
       }
 
       // Approved sources first; fall back to any.
       const approved = [];
       const fallback = [];
-      for (const a of articles) {
+      for (const a of pool) {
         const outlet = matchApprovedOutlet(a);
         if (outlet) approved.push({ ...a, outlet });
         else fallback.push({ ...a, outlet: null });
@@ -1056,23 +1142,31 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
         pick = scored[0];
       }
 
+      // Generate a one-line angle suggestion via Anthropic for the chosen story.
+      // Prefer the topic-pulse synthesis best_angle when available; otherwise
+      // call the dedicated angle generator.
+      let angleLine = pick.analysis?.best_angle || '';
+      if (!angleLine) {
+        angleLine = await generateAngleLine(pick.article.headline, pick.article.outlet || pick.article.source);
+      }
+
       const opportunity = opportunityBucket(pick.analysis?.saturation_score);
       const lifecycle   = pick.analysis ? lifecycleLabel(pick.analysis) : 'Unknown';
 
       const data = {
         article: {
-          id:          pick.article.id || pick.article.link || pick.article.url,
+          id:          pick.article.url || pick.article.headline,
           headline:    pick.article.headline,
           source:      pick.article.source || '',
           outlet:      pick.article.outlet || null,
-          url:         pick.article.url || pick.article.link || '',
-          publishedAt: pick.article.publishedAt || pick.article.pubDate || '',
-          angle:       pick.article.angle || '',
+          url:         pick.article.url || '',
+          publishedAt: pick.article.publishedAt || '',
+          angle:       angleLine,
         },
         subject: pick.subject,
         analysis: pick.analysis ? {
           saturation_score: pick.analysis.saturation_score,
-          best_angle:       pick.analysis.best_angle || '',
+          best_angle:       pick.analysis.best_angle || angleLine || '',
           recommendation:   pick.analysis.recommendation || '',
           dominant_framing: pick.analysis.dominant_framing || '',
           trends:           pick.analysis.trends || null,
