@@ -11,6 +11,7 @@ import Notifications from './components/Notifications';
 import ListPage from './components/ListPage';
 import TopicPulse from './pages/TopicPulse';
 import ScriptResult from './pages/ScriptResult';
+import Scripts from './pages/Scripts';
 import './App.css';
 
 const PERSISTENT_KEY       = 'team_hub_persistent_auth';
@@ -304,6 +305,12 @@ export default function App() {
             Find Stories
           </Link>
           <Link
+            className={`app-nav-link${isActive('/scripts') ? ' app-nav-link--active' : ''}`}
+            to="/scripts"
+          >
+            Scripts
+          </Link>
+          <Link
             className={`app-nav-link${isActive('/title-tool') ? ' app-nav-link--active' : ''}`}
             to="/title-tool"
           >
@@ -402,6 +409,7 @@ export default function App() {
             <nav className="mobile-nav-dropdown">
               <Link className={`mobile-nav-link${isActive('/') ? ' mobile-nav-link--active' : ''}`} to="/">Stories</Link>
               <Link className={`mobile-nav-link${isActive('/find-stories') ? ' mobile-nav-link--active' : ''}`} to="/find-stories">Find Stories</Link>
+              <Link className={`mobile-nav-link${isActive('/scripts') ? ' mobile-nav-link--active' : ''}`} to="/scripts">Scripts</Link>
               <Link className={`mobile-nav-link${isActive('/title-tool') ? ' mobile-nav-link--active' : ''}`} to="/title-tool">Title Tool</Link>
               <Link className={`mobile-nav-link${isActive('/posts') ? ' mobile-nav-link--active' : ''}`} to="/posts" style={{ position: 'relative' }}>
                 Posts
@@ -470,6 +478,7 @@ export default function App() {
             </section>
           } />
           <Route path="/script-result" element={<ScriptResult />} />
+          <Route path="/scripts" element={<Scripts passphrase={passphrase} />} />
         </Routes>
       </main>
 

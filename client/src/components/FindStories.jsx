@@ -360,6 +360,7 @@ export default function FindStories({ passphrase, userName }) {
           articleTitle: scriptModalArticle.headline || '',
           articleSource: scriptModalArticle.outlet || scriptModalArticle.source || '',
           angleNotes: angleNotes.trim(),
+          user: userName,
         }),
         signal: controller.signal,
       });

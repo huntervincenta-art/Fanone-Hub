@@ -143,6 +143,16 @@ const hunterUpdateSchema = new mongoose.Schema({
   createdAt: { type: String, default: () => new Date().toISOString() },
 }, { versionKey: false });
 
+const scriptSchema = new mongoose.Schema({
+  _id:             { type: String, default: () => Date.now().toString() },
+  articleTitle:    { type: String, default: '' },
+  articleSource:   { type: String, default: '' },
+  angleNotes:      { type: String, default: '' },
+  generatedScript: { type: String, required: true },
+  generatedBy:    { type: String, default: '' },
+  createdAt:       { type: String, default: () => new Date().toISOString() },
+}, { versionKey: false, collection: 'scripts' });
+
 const Story        = mongoose.model('Story', storySchema);
 const Post         = mongoose.model('Post', postSchema);
 const Log          = mongoose.model('Log', logSchema);
@@ -150,6 +160,7 @@ const Comment      = mongoose.model('Comment', commentSchema);
 const DM           = mongoose.model('DM', dmSchema);
 const ListItem     = mongoose.model('ListItem', listItemSchema);
 const HunterUpdate = mongoose.model('HunterUpdate', hunterUpdateSchema);
+const Script       = mongoose.model('Script', scriptSchema);
 
 // Convert mongoose doc → plain object with `id` field instead of `_id`
 function toObj(doc) {
@@ -1183,7 +1194,7 @@ app.post('/api/title-tool', requireAuth, async (req, res) => {
 
 // POST /api/generate-script — full MFS script package via Claude
 app.post('/api/generate-script', requireAuth, async (req, res) => {
-  const { articleText = '', articleTitle = '', articleSource = '', angleNotes = '' } = req.body || {};
+  const { articleText = '', articleTitle = '', articleSource = '', angleNotes = '', user = '' } = req.body || {};
   if (!articleText.trim() && !articleTitle.trim()) {
     return res.status(400).json({ error: 'articleText or articleTitle is required' });
   }
@@ -1228,9 +1239,46 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
     const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
-    res.json({ script });
+    let savedId = null;
+    try {
+      const saved = await new Script({
+        articleTitle:    articleTitle || '',
+        articleSource:   articleSource || '',
+        angleNotes:      angleNotes || '',
+        generatedScript: script,
+        generatedBy:    user || '',
+      }).save();
+      savedId = saved._id;
+    } catch (saveErr) {
+      console.error('[generate-script] failed to persist script:', saveErr.message);
+    }
+
+    res.json({ script, id: savedId });
   } catch (err) {
     console.error('POST /api/generate-script error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/scripts — list all saved scripts, newest first
+app.get('/api/scripts', requireAuth, async (req, res) => {
+  try {
+    const scripts = await Script.find({}).sort({ createdAt: -1 }).lean();
+    res.json(scripts.map(s => { s.id = s._id; delete s._id; return s; }));
+  } catch (err) {
+    console.error('GET /api/scripts error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/scripts/:id
+app.delete('/api/scripts/:id', requireAuth, async (req, res) => {
+  try {
+    const result = await Script.findByIdAndDelete(req.params.id);
+    if (!result) return res.status(404).json({ error: 'Script not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /api/scripts/:id error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
