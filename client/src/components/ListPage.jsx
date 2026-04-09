@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getHostColor } from '../config/hosts';
 
-const crown = name => name === 'Hunter' ? <>{name} 👑</> : name;
+const crown = name => name;
 
 const TrashIcon = () => (
   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">

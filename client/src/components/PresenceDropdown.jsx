@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const crown = name => name === 'Hunter' ? <>{name} 👑</> : name;
+const crown = name => name;
 
 export default function PresenceDropdown({ userName, onlineUsers, allUsers, onLogout }) {
   const [open, setOpen] = useState(false);

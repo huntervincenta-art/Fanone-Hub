@@ -2,8 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { HOSTS, getHostColor } from '../config/hosts';
 
 const TrashIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M2 4h12M5 4V2.5a.5.5 0 01.5-.5h5a.5.5 0 01.5.5V4M6.5 7v5M9.5 7v5M3.5 4l.75 8.25a.75.75 0 00.75.75h6a.75.75 0 00.75-.75L12.5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M2 4h12M5 4V2.5a.5.5 0 01.5-.5h5a.5.5 0 01.5.5V4M6.5 7v5M9.5 7v5M3.5 4l.75 8.25a.75.75 0 00.75.75h6a.75.75 0 00.75-.75L12.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ChatIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
   </svg>
 );
 
@@ -674,7 +680,10 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                     </td>
                     <td className="hub-cell-host">
                       {story.host
-                        ? <span className="host-name" style={getHostColor(story.host) ? { color: getHostColor(story.host) } : undefined}>{story.host}{story.host === 'Hunter' ? ' 👑' : ''}</span>
+                        ? <span className="host-name" style={getHostColor(story.host) ? { color: getHostColor(story.host) } : undefined}>
+                            {story.host}
+                            {story.host === ADMIN_USER && <span className="host-admin-badge" title="Admin">ADMIN</span>}
+                          </span>
                         : '—'}
                     </td>
                     <td className="hub-cell-actions">
@@ -703,8 +712,9 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                           className={`hub-action-btn hub-action-btn--comments${expandedComments.has(story.id) ? ' hub-action-btn--comments-open' : ''}`}
                           onClick={() => toggleComments(story.id)}
                           title="Comments"
+                          aria-label="Comments"
                         >
-                          💬
+                          <ChatIcon />
                         </button>
                         {(commentCounts[story.id] || 0) > 0 && (
                           <span className="hub-comment-badge">{commentCounts[story.id]}</span>
@@ -771,7 +781,7 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                       {userName === ADMIN_USER && (
                         trainedStoryIds.has(story.id)
                           ? <span className="hub-trained-label">✓ Added</span>
-                          : <button className="hub-action-btn hub-action-btn--train" onClick={() => openTrainingModal(story)} title="Add to Training Data">+ Train</button>
+                          : <button className="hub-action-btn hub-action-btn--train" onClick={() => openTrainingModal(story)} title="Add to AI Training Data">Train AI</button>
                       )}
                       <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDelete(story.id)} title="Delete">
                         <TrashIcon />
@@ -985,8 +995,9 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                           className={`hub-action-btn hub-action-btn--comments${expandedComments.has(story.id) ? ' hub-action-btn--comments-open' : ''}`}
                           onClick={() => toggleComments(story.id)}
                           title="Comments"
+                          aria-label="Comments"
                         >
-                          💬
+                          <ChatIcon />
                         </button>
                         {(commentCounts[story.id] || 0) > 0 && (
                           <span className="hub-comment-badge">{commentCounts[story.id]}</span>

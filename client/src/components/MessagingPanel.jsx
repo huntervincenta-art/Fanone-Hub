@@ -42,7 +42,7 @@ function renderMentions(text, currentUser) {
 
 const DM_EXCLUDED = new Set(['omar']);
 
-const crown = name => name === 'Hunter' ? <>{name} 👑</> : name;
+const crown = name => name;
 
 export default function MessagingPanel({ passphrase, userName, initialTab }) {
   const [msgTab, setMsgTab] = useState(initialTab || 'posts');
@@ -492,7 +492,7 @@ export default function MessagingPanel({ passphrase, userName, initialTab }) {
                 <div className="msg-item msg-item--hunter" key={u.id}>
                   <div className="msg-item-header">
                     <span className="msg-sender host-name" style={{ color: 'var(--accent)' }}>
-                      Hunter 👑
+                      Hunter
                     </span>
                     <span className="msg-time">{formatTime(u.createdAt)}</span>
                   </div>
