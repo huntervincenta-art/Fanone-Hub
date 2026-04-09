@@ -1,35 +1,57 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import TitleTool from '../components/TitleTool';
 import TopicPulse from './TopicPulse';
 
-// Same parser used by ScriptResult / Scripts page.
-function parseScript(raw) {
-  if (!raw) return [];
-  const lines = raw.split('\n');
-  const sections = [];
-  let current = null;
-  for (const line of lines) {
-    const headingMatch = line.match(/^#\s+(.+?)\s*$/);
-    if (headingMatch) {
-      if (current) sections.push(current);
-      current = { title: headingMatch[1].trim(), body: '' };
-    } else if (current) {
-      current.body += (current.body ? '\n' : '') + line;
+// Approved-source matchers — kept in sync with FindStories.jsx
+const APPROVED_OUTLETS = [
+  { name: 'TIME',            needles: ['time.com', 'time magazine'] },
+  { name: 'Reuters',         needles: ['reuters'] },
+  { name: 'Politico',        needles: ['politico'] },
+  { name: 'AP',              needles: ['apnews', 'associated press', 'ap news'] },
+  { name: 'NPR',             needles: ['npr.org', 'npr'] },
+  { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'] },
+  { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'] },
+  { name: 'Washington Post', needles: ['washingtonpost', 'washington post'] },
+  { name: 'CNN',             needles: ['cnn.com', 'cnn'] },
+  { name: 'NBC News',        needles: ['nbcnews', 'nbc news'] },
+  { name: 'CBS News',        needles: ['cbsnews', 'cbs news'] },
+  { name: 'ABC News',        needles: ['abcnews.go.com', 'abcnews', 'abc news'] },
+  { name: 'The Guardian',    needles: ['theguardian', 'the guardian', 'guardian'] },
+  { name: 'The Hill',        needles: ['thehill.com', 'thehill', 'the hill'] },
+  { name: 'ProPublica',      needles: ['propublica'] },
+  { name: 'The Atlantic',    needles: ['theatlantic', 'the atlantic', 'atlantic'] },
+  { name: 'Bloomberg',       needles: ['bloomberg'] },
+  { name: 'Axios',           needles: ['axios'] },
+  { name: 'BBC',             needles: ['bbc.com', 'bbc.co.uk', 'bbc'] },
+  { name: 'PBS',             needles: ['pbs.org', 'pbs'] },
+  { name: 'MSNBC',           needles: ['msnbc'] },
+  { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'] },
+  { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'] },
+];
+
+function matchOutlet(article) {
+  const parts = [];
+  if (article.url) {
+    try {
+      const u = new URL(article.url);
+      parts.push(u.hostname.toLowerCase().replace(/^www\./, ''));
+      parts.push(u.pathname.toLowerCase());
+    } catch {}
+  }
+  const src = typeof article.source === 'string'
+    ? article.source
+    : (article.source && (article.source.name || article.source.title)) || '';
+  if (src) parts.push(String(src).toLowerCase());
+  const hay = parts.join(' ');
+  if (!hay) return null;
+  for (const outlet of APPROVED_OUTLETS) {
+    for (const needle of outlet.needles) {
+      if (hay.includes(needle)) return outlet.name;
     }
   }
-  if (current) sections.push(current);
-  return sections.map(s => ({ ...s, body: s.body.trim() }));
+  return null;
 }
-
-const SECTION_LABELS = {
-  'YOUTUBE TITLE':           'YouTube Title',
-  'ALT TITLES':              'Alt Titles',
-  'THUMBNAIL TEXT OPTIONS':  'Thumbnail Options',
-  'YOUTUBE DESCRIPTION':     'Description',
-  'TELEPROMPTER SCRIPT':     'Teleprompter Script',
-};
-const prettyLabel = (t) => SECTION_LABELS[t.toUpperCase()] || t;
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -142,40 +164,161 @@ function ChannelStatsCard({ passphrase }) {
   );
 }
 
-function ScriptDetail({ script }) {
-  const sections = useMemo(() => parseScript(script.generatedScript), [script.generatedScript]);
+function RecommendedStoryCard({ passphrase, userName }) {
+  const navigate = useNavigate();
+  const [story, setStory] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState('');
+
+  const fetchTopStory = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/find-stories?window=24h', {
+        headers: { 'x-passphrase': passphrase },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to load stories');
+      }
+      const articles = await res.json();
+      // Prefer approved sources; fall back to first article overall.
+      let pick = null;
+      for (const a of articles || []) {
+        const outlet = matchOutlet(a);
+        if (outlet) { pick = { ...a, outlet }; break; }
+      }
+      if (!pick && articles && articles.length > 0) {
+        pick = { ...articles[0], outlet: null };
+      }
+      setStory(pick || null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [passphrase]);
+
+  useEffect(() => {
+    fetchTopStory();
+  }, [fetchTopStory]);
+
+  const handleGenerateScript = async () => {
+    if (!story) return;
+    setGenerating(true);
+    setGenerateError('');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    try {
+      const res = await fetch('/api/generate-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({
+          articleText: story.angle || story.summary || story.headline || '',
+          articleTitle: story.headline || '',
+          articleSource: story.outlet || story.source || '',
+          angleNotes: '',
+          user: userName,
+        }),
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to generate script');
+      navigate('/script-result', {
+        state: {
+          script: data.script,
+          articleTitle: story.headline || '',
+          articleSource: story.outlet || story.source || '',
+        },
+      });
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        setGenerateError('Script generation timed out after 2 minutes. Try again.');
+      } else {
+        setGenerateError(err.message);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      setGenerating(false);
+    }
+  };
+
   return (
-    <div className="scripts-detail">
-      {script.angleNotes && (
-        <div className="scripts-detail-notes">
-          <span className="scripts-detail-notes-label">Angle notes:</span> {script.angleNotes}
-        </div>
+    <div className="dash-card dash-card--recommended">
+      <div className="dash-card-head">
+        <span className="dash-card-label">Recommended Story</span>
+        <button
+          type="button"
+          className="dash-icon-btn"
+          onClick={fetchTopStory}
+          disabled={loading}
+          title="Refresh"
+          aria-label="Refresh recommended story"
+        >↻</button>
+      </div>
+
+      {loading && !story && (
+        <div className="dash-empty">Finding the top story…</div>
       )}
-      {sections.length === 0 ? (
-        <pre className="script-result-raw">{script.generatedScript}</pre>
-      ) : (
-        <div className="script-result-sections">
-          {sections.map((s, i) => (
-            <div className="script-section" key={i}>
-              <h3 className="script-section-title">{prettyLabel(s.title)}</h3>
-              <pre className="script-section-body">{s.body}</pre>
+      {error && !loading && (
+        <div className="alert alert-error">{error}</div>
+      )}
+      {!loading && !error && !story && (
+        <div className="dash-empty">No stories available right now.</div>
+      )}
+
+      {story && (
+        <>
+          <div className="recommended-meta">
+            {story.outlet && <span className="recommended-outlet">{story.outlet}</span>}
+            {!story.outlet && story.source && <span className="recommended-outlet recommended-outlet--off">{story.source}</span>}
+            {story.publishedAt && (
+              <span className="recommended-date">{formatDate(story.publishedAt)}</span>
+            )}
+          </div>
+          {story.url ? (
+            <a
+              className="recommended-headline"
+              href={story.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {story.headline}
+            </a>
+          ) : (
+            <div className="recommended-headline">{story.headline}</div>
+          )}
+          {story.angle && (
+            <div className="recommended-angle">
+              <span className="recommended-angle-label">Angle</span>
+              <p>{story.angle}</p>
             </div>
-          ))}
-        </div>
+          )}
+          {generateError && <div className="alert alert-error" style={{ marginTop: '0.5rem' }}>{generateError}</div>}
+          <button
+            type="button"
+            className="btn btn-primary recommended-cta"
+            onClick={handleGenerateScript}
+            disabled={generating}
+          >
+            {generating ? 'Generating script…' : 'Generate Full Script'}
+          </button>
+        </>
       )}
     </div>
   );
 }
 
-export default function Dashboard({ passphrase, userName }) {
-  const [recentScripts, setRecentScripts] = useState([]);
-  const [scriptsLoading, setScriptsLoading] = useState(false);
-  const [scriptsError, setScriptsError] = useState('');
-  const [expandedScriptId, setExpandedScriptId] = useState(null);
+function RecentScriptsCompact({ passphrase }) {
+  const [scripts, setScripts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const fetchRecentScripts = useCallback(async () => {
-    setScriptsLoading(true);
-    setScriptsError('');
+  const fetchScripts = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
       const res = await fetch('/api/scripts', {
         headers: { 'x-passphrase': passphrase },
@@ -185,93 +328,77 @@ export default function Dashboard({ passphrase, userName }) {
         throw new Error(data.error || 'Failed to load scripts');
       }
       const all = await res.json();
-      setRecentScripts(all.slice(0, 8));
+      setScripts(all.slice(0, 5));
     } catch (err) {
-      setScriptsError(err.message);
+      setError(err.message);
     } finally {
-      setScriptsLoading(false);
+      setLoading(false);
     }
   }, [passphrase]);
 
   useEffect(() => {
-    fetchRecentScripts();
-  }, [fetchRecentScripts]);
+    fetchScripts();
+  }, [fetchScripts]);
 
   return (
+    <div className="dash-card dash-card--recent-scripts">
+      <div className="dash-card-head">
+        <span className="dash-card-label">Recent Scripts</span>
+      </div>
+      {error && <div className="alert alert-error">{error}</div>}
+      {loading && scripts.length === 0 ? (
+        <div className="dash-empty">Loading…</div>
+      ) : scripts.length === 0 ? (
+        <div className="dash-empty">No scripts yet.</div>
+      ) : (
+        <ul className="recent-scripts-list">
+          {scripts.map(s => (
+            <li key={s.id} className="recent-scripts-item">
+              <Link to="/scripts" className="recent-scripts-link">
+                <div className="recent-scripts-title">{s.articleTitle || '(Untitled)'}</div>
+                <div className="recent-scripts-meta">
+                  <span>{formatDate(s.createdAt)}</span>
+                  {s.generatedBy && <span> · {s.generatedBy}</span>}
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="dash-card-footer">
+        <Link to="/scripts" className="dashboard-link-muted">View all →</Link>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard({ passphrase, userName }) {
+  return (
     <div className="dashboard">
-      {/* ── YouTube channel stats ── */}
+      {/* Row 1 — channel stats strip */}
       <ChannelStatsCard passphrase={passphrase} />
 
-      {/* ── Title Generator section ── */}
-      <section className="dashboard-section">
-        <div className="dashboard-section-header">
-          <h2>Title Generator</h2>
-        </div>
-        <div className="dashboard-section-body dashboard-title-tool">
+      {/* Row 2 — Title Generator (60) + Recommended Story (40) */}
+      <div className="dashboard-grid">
+        <div className="dash-card dash-card--title">
+          <div className="dash-card-head">
+            <span className="dash-card-label">Title Generator</span>
+          </div>
           <TitleTool passphrase={passphrase} userName={userName} />
         </div>
-      </section>
+        <RecommendedStoryCard passphrase={passphrase} userName={userName} />
+      </div>
 
-      {/* ── Topic Pulse section ── */}
-      <section className="dashboard-section">
-        <div className="dashboard-section-header">
-          <h2>Topic Pulse</h2>
-        </div>
-        <div className="dashboard-section-body dashboard-topic-pulse">
+      {/* Row 3 — Topic Pulse (60) + Recent Scripts (40) */}
+      <div className="dashboard-grid">
+        <div className="dash-card dash-card--pulse">
+          <div className="dash-card-head">
+            <span className="dash-card-label">Topic Pulse</span>
+          </div>
           <TopicPulse passphrase={passphrase} />
         </div>
-      </section>
-
-      {/* ── Recent Scripts section ── */}
-      <section className="dashboard-section">
-        <div className="dashboard-section-header">
-          <h2>Recent Scripts</h2>
-          <Link to="/scripts" className="dashboard-link-muted">View all</Link>
-        </div>
-        <div className="dashboard-section-body">
-          {scriptsError && (
-            <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{scriptsError}</div>
-          )}
-          {scriptsLoading && recentScripts.length === 0 ? (
-            <div className="scripts-empty">Loading scripts…</div>
-          ) : recentScripts.length === 0 ? (
-            <div className="scripts-empty">
-              No scripts yet. Generate one from the Find Stories page.
-            </div>
-          ) : (
-            <div className="dashboard-scripts-list">
-              {recentScripts.map(script => {
-                const isExpanded = expandedScriptId === script.id;
-                return (
-                  <div key={script.id} className={`dashboard-script-item${isExpanded ? ' dashboard-script-item--expanded' : ''}`}>
-                    <button
-                      type="button"
-                      className="dashboard-script-row"
-                      onClick={() => setExpandedScriptId(isExpanded ? null : script.id)}
-                    >
-                      <span className="dashboard-script-chevron" aria-hidden="true">
-                        {isExpanded ? '▾' : '▸'}
-                      </span>
-                      <span className="dashboard-script-date">{formatDate(script.createdAt)}</span>
-                      <span className="dashboard-script-title">
-                        {script.articleTitle || '(Untitled)'}
-                      </span>
-                      <span className="dashboard-script-by">
-                        {script.generatedBy ? `by ${script.generatedBy}` : ''}
-                      </span>
-                    </button>
-                    {isExpanded && (
-                      <div className="dashboard-script-detail">
-                        <ScriptDetail script={script} />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
+        <RecentScriptsCompact passphrase={passphrase} />
+      </div>
     </div>
   );
 }

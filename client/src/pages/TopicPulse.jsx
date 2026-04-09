@@ -246,7 +246,7 @@ function SubjectCard({ result }) {
       {hasChart && (
         <div className="tp-chart-wrap">
           <div className="tp-chart-label">YouTube activity — last 24 hours</div>
-          <HourlyChart hourlyBreakdown={breakdown} color={color} />
+          <HourlyChart hourlyBreakdown={breakdown} color="#c41e3a" />
         </div>
       )}
 
