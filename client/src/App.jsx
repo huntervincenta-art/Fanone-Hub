@@ -311,29 +311,19 @@ export default function App() {
           >
             Find Stories
           </Link>
+          <span className="app-nav-divider" aria-hidden="true" />
           <Link
-            className={`app-nav-link${isActive('/scripts') ? ' app-nav-link--active' : ''}`}
+            className={`app-nav-link app-nav-link--secondary${isActive('/scripts') ? ' app-nav-link--active' : ''}`}
             to="/scripts"
           >
             Scripts
           </Link>
           <Link
-            className={`app-nav-link${isActive('/posts') ? ' app-nav-link--active' : ''}`}
-            to="/posts"
-            style={{ position: 'relative' }}
-          >
-            Posts
-            {dmUnread > 0 && (
-              <span className="nav-unread-badge">{dmUnread}</span>
-            )}
-          </Link>
-          <Link
-            className={`app-nav-link${isActive('/list') ? ' app-nav-link--active' : ''}`}
+            className={`app-nav-link app-nav-link--secondary${isActive('/list') ? ' app-nav-link--active' : ''}`}
             to="/list"
           >
             List
           </Link>
-          <span className="app-nav-divider" aria-hidden="true" />
           <Link
             className={`app-nav-link app-nav-link--secondary${isActive('/notifications') ? ' app-nav-link--active' : ''}`}
             to="/notifications"
@@ -404,10 +394,6 @@ export default function App() {
               <Link className={`mobile-nav-link${isActive('/stories') ? ' mobile-nav-link--active' : ''}`} to="/stories">Stories</Link>
               <Link className={`mobile-nav-link${isActive('/find-stories') ? ' mobile-nav-link--active' : ''}`} to="/find-stories">Find Stories</Link>
               <Link className={`mobile-nav-link${isActive('/scripts') ? ' mobile-nav-link--active' : ''}`} to="/scripts">Scripts</Link>
-              <Link className={`mobile-nav-link${isActive('/posts') ? ' mobile-nav-link--active' : ''}`} to="/posts" style={{ position: 'relative' }}>
-                Posts
-                {dmUnread > 0 && <span className="nav-unread-badge">{dmUnread}</span>}
-              </Link>
               <Link className={`mobile-nav-link${isActive('/list') ? ' mobile-nav-link--active' : ''}`} to="/list">List</Link>
               <Link className={`mobile-nav-link${isActive('/notifications') ? ' mobile-nav-link--active' : ''}`} to="/notifications">Alerts</Link>
             </nav>

@@ -203,34 +203,32 @@ export default function Dashboard({ passphrase, userName }) {
       <ChannelStatsCard passphrase={passphrase} />
 
       {/* ── Title Generator section ── */}
-      <section className="dashboard-card">
-        <div className="dashboard-card-header">
+      <section className="dashboard-section">
+        <div className="dashboard-section-header">
           <h2>Title Generator</h2>
-          <Link to="/title-tool" className="dashboard-link">Open full tool →</Link>
         </div>
-        <div className="dashboard-card-body dashboard-title-tool">
+        <div className="dashboard-section-body dashboard-title-tool">
           <TitleTool passphrase={passphrase} userName={userName} />
         </div>
       </section>
 
       {/* ── Topic Pulse section ── */}
-      <section className="dashboard-card">
-        <div className="dashboard-card-header">
+      <section className="dashboard-section">
+        <div className="dashboard-section-header">
           <h2>Topic Pulse</h2>
-          <Link to="/topic-pulse" className="dashboard-link">View full pulse →</Link>
         </div>
-        <div className="dashboard-card-body dashboard-topic-pulse">
+        <div className="dashboard-section-body dashboard-topic-pulse">
           <TopicPulse passphrase={passphrase} />
         </div>
       </section>
 
       {/* ── Recent Scripts section ── */}
-      <section className="dashboard-card">
-        <div className="dashboard-card-header">
+      <section className="dashboard-section">
+        <div className="dashboard-section-header">
           <h2>Recent Scripts</h2>
-          <Link to="/scripts" className="dashboard-link">View All Scripts →</Link>
+          <Link to="/scripts" className="dashboard-link-muted">View all</Link>
         </div>
-        <div className="dashboard-card-body">
+        <div className="dashboard-section-body">
           {scriptsError && (
             <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{scriptsError}</div>
           )}

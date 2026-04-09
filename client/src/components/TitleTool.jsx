@@ -133,12 +133,11 @@ export default function TitleTool({ passphrase, userName }) {
 
   return (
     <div className="title-tool">
-      <div className="title-tool-header">
-        <span className="title-tool-label">Title Tool</span>
-        {result && (
+      {result && (
+        <div className="title-tool-header">
           <button className="btn-ghost" onClick={handleClear} type="button">Clear</button>
-        )}
-      </div>
+        </div>
+      )}
 
       <form onSubmit={handleGenerate}>
         <div className="title-tool-input-area">
@@ -148,16 +147,18 @@ export default function TitleTool({ passphrase, userName }) {
             value={text}
             onChange={e => setText(e.target.value)}
             placeholder="Paste an article, headline, or summary here…"
-            rows={6}
+            rows={3}
             disabled={loading}
           />
-          <button
-            className="btn btn-primary"
-            type="submit"
-            disabled={loading || !text.trim()}
-          >
-            {loading ? 'Generating…' : 'Generate Titles'}
-          </button>
+          <div className="title-tool-actions">
+            <button
+              className="btn btn-primary title-tool-generate"
+              type="submit"
+              disabled={loading || !text.trim()}
+            >
+              {loading ? 'Generating…' : 'Generate Titles'}
+            </button>
+          </div>
         </div>
       </form>
 
