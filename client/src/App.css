@@ -1678,7 +1678,7 @@ body {
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 2.25rem;
+  gap: 1.5rem;
 }
 
 /* ── Channel stats — slim status strip ───────────── */
@@ -1857,16 +1857,21 @@ html[data-theme="light"] .channel-stats-card {
   .channel-stats-meta { margin-left: auto; }
 }
 
-/* ── Dashboard sections — borderless with thin dividers ── */
+/* ── Dashboard sections — distinct subtle cards ─── */
 .dashboard-section {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 1.4rem 1.5rem 1.5rem;
 }
 
-.dashboard-section + .dashboard-section {
-  padding-top: 1.6rem;
-  border-top: 1px solid var(--border);
+html[data-theme="light"] .dashboard-section {
+  background: #ffffff;
+  border-color: var(--border);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 }
 
 .dashboard-section-header {
@@ -1874,18 +1879,23 @@ html[data-theme="light"] .channel-stats-card {
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
+  margin-bottom: 0.25rem;
 }
 
 .dashboard-section-header h2 {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: #ffffff;
+  text-transform: none;
+  letter-spacing: -0.005em;
   margin: 0;
   padding: 0;
   border: none;
-  line-height: 1;
+  line-height: 1.15;
+}
+
+html[data-theme="light"] .dashboard-section-header h2 {
+  color: var(--text);
 }
 
 .dashboard-link-muted {
@@ -1910,6 +1920,17 @@ html[data-theme="light"] .channel-stats-card {
   overflow-y: auto;
   margin: 0 -0.25rem;
   padding: 0 0.25rem;
+}
+
+@media (max-width: 600px) {
+  .dashboard { gap: 1.1rem; }
+  .dashboard-section {
+    padding: 1.1rem 1.1rem 1.2rem;
+    border-radius: 10px;
+  }
+  .dashboard-section-header h2 {
+    font-size: 1.35rem;
+  }
 }
 
 .dashboard-scripts-list {
