@@ -3380,6 +3380,29 @@ html[data-theme="light"] .video-section-badge--x { background: rgba(0,0,0,0.07);
   box-shadow: inset 3px 0 0 rgba(251, 191, 36, 0.55);
 }
 
+.hub-table tbody tr.hub-row--flagged {
+  background: rgba(255, 193, 7, 0.10);
+}
+
+.hub-table tbody tr.hub-row--flagged:hover {
+  background: rgba(255, 193, 7, 0.16);
+}
+
+html[data-theme="light"] .hub-table tbody tr.hub-row--flagged {
+  background: rgba(255, 193, 7, 0.18);
+}
+
+html[data-theme="light"] .hub-table tbody tr.hub-row--flagged:hover {
+  background: rgba(255, 193, 7, 0.26);
+}
+
+@media (max-width: 600px) {
+  .hub-table tbody tr.hub-row--flagged {
+    background: rgba(255, 193, 7, 0.10);
+    border-left-color: rgba(251, 191, 36, 0.7);
+  }
+}
+
 /* New-row flash animation */
 @keyframes hub-row-flash {
   0%   { background: rgba(74, 222, 128, 0.18); }

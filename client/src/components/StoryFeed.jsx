@@ -734,7 +734,7 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                       >
                         ⚑
                       </button>
-                      {story.flagged && userName === ADMIN_USER && (
+                      {!story.flagged && userName === ADMIN_USER && (
                         <>
                           <button className="hub-action-btn hub-action-btn--approve" onClick={() => handleApprove(story.id)} title="Approve story">
                             Approve
@@ -997,7 +997,7 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                       >
                         ⚑
                       </button>
-                      {story.flagged && userName === ADMIN_USER && (
+                      {!story.flagged && userName === ADMIN_USER && (
                         <>
                           <button className="hub-action-btn hub-action-btn--approve" onClick={() => handleApprove(story.id)} title="Approve story">Approve</button>
                           <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDecline(story.id)} title="Decline and delete story">Decline</button>
