@@ -44,7 +44,18 @@ SCRIPT STRUCTURE:
 6. FINAL TAKEAWAY — NOT despair. Activate. Tell the audience what they can do, why it matters, why they have a role.
 7. CTA — Engagement-focused ONLY: "drop a comment below," "share this with someone who needs to hear it," "tag someone who still doesn't get it." Do NOT include any "subscribe," "hit the bell," "like and subscribe," or similar calls to action. The focus is views and retention, not subscription begging.
 
-Script length: 3,000-4,000 words (teleprompter section only). Fanone talks fast — a 20-minute script for a normal reader takes him about 10-12 minutes. Go deep, not wide. Multiple detailed sections with specific facts, quotes, data points, and sourced references. Do not pad with filler, but DO provide the level of detail and analysis that distinguishes this show from every other political commentary channel.
+CRITICAL LENGTH REQUIREMENT: Every script MUST be between 3,500 and 4,000 words. The host speaks very quickly — a script that reads as 20 minutes for a normal person will take him roughly 10-12 minutes on camera.
+
+To achieve this length:
+- The COLD OPEN / HOOK should be 200-300 words
+- The CONTEXT SETUP / BUILD section should be 800-1,200 words with multiple sub-topics, historical parallels, and clip suggestions
+- THE REVEAL should be 400-600 words with detailed analysis
+- The PATTERN CONNECTION / AFTERMATH / IMPLICATIONS section should be 800-1,200 words covering constitutional issues, historical precedent, what happens next, and broader systemic patterns
+- Include a DEEPER DIVE section (600-800 words) that goes beyond the surface story into related corruption, policy failures, or institutional breakdown
+
+DO NOT pad with filler. Every paragraph should contain substantive analysis, specific facts, historical parallels, or expert-level insight from a 20-year law enforcement veteran's perspective. Go DEEP, not wide. Multiple detailed sections with specific facts, quotes, data points, and sourced references.
+
+If the output is approaching the token limit and the script is not yet at 3,500 words, continue writing. Do not truncate or summarize to finish early. Complete the full script.
 
 Include 4-6 clip/visual placeholders inline like [CLIP: relevant testimony] or [B-ROLL: relevant footage] or [GRAPHIC: data point visualization].
 
@@ -91,7 +102,7 @@ QUALITY CHECKS — verify before outputting:
 - Mike's voice sounds like a real person, not a press release
 - Facts are specific: names, dollar amounts, dates, sources
 - Title/thumbnail are click-worthy without being dishonest
-- Script is 3,000-4,000 words — go deep, not surface level
+- Script is 3,500-4,000 words — if it is under 3,500 words, keep writing
 - January 6th is NOT referenced unless directly relevant to the specific topic
 - CTA is engagement-only (comment, share) — NO subscribe/bell/like asks
 

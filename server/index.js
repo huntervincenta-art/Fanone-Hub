@@ -1894,7 +1894,7 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
       },
       {
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 12000,
+        max_tokens: 16000,
         system: MFS_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }
@@ -2011,7 +2011,7 @@ app.post('/api/scripts/:id/regenerate', requireAuth, async (req, res) => {
       },
       {
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 12000,
+        max_tokens: 16000,
         system: MFS_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }

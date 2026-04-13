@@ -6538,3 +6538,112 @@ details[open] .notif-all-topics-summary::before {
   color: var(--text);
   line-height: 1.35;
 }
+
+/* ── Featured story card ─────────────────────────── */
+.featured-story {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.featured-story-top {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+.featured-story-rank {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(196, 30, 58, 0.1);
+  border: 1px solid rgba(196, 30, 58, 0.25);
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+}
+.featured-story-body {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+.featured-story-gauges {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.featured-story-gauges .saturation-gauge-card {
+  padding: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+.featured-story-gauges .saturation-gauge-info {
+  align-items: center;
+  text-align: center;
+}
+.featured-story-content {
+  flex: 1;
+  min-width: 0;
+}
+.featured-story-headline {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+  margin-bottom: 0.5rem;
+}
+.featured-story-headline a {
+  color: inherit;
+  text-decoration: none;
+}
+.featured-story-headline a:hover {
+  text-decoration: underline;
+}
+.featured-story-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.65rem;
+}
+.featured-story-time {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.featured-story-angle {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 0.65rem;
+}
+.featured-story-angle p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+.featured-story-angle-label {
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+@media (max-width: 700px) {
+  .featured-story-body {
+    flex-direction: column;
+  }
+  .featured-story-gauges {
+    flex-direction: row;
+    justify-content: center;
+  }
+}

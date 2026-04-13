@@ -331,6 +331,116 @@ function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
   );
 }
 
+function FeaturedStoryCard({ item, passphrase, userName }) {
+  const navigate = useNavigate();
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState('');
+
+  const story = item.article;
+  const opp = item.opportunity || {};
+  const score = item.score;
+  const saturationScore = score != null ? 100 - score : null;
+
+  const handleGenerateScript = async () => {
+    setGenerating(true);
+    setGenerateError('');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    try {
+      const res = await fetch('/api/generate-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({
+          articleText: story.angle || story.headline || '',
+          articleTitle: story.headline || '',
+          articleSource: story.outlet || story.source || '',
+          angleNotes: '',
+          user: userName,
+        }),
+        signal: controller.signal,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Failed to generate script');
+      navigate('/script-result', {
+        state: {
+          script: body.script,
+          articleTitle: story.headline || '',
+          articleSource: story.outlet || story.source || '',
+        },
+      });
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        setGenerateError('Script generation timed out. Try again.');
+      } else {
+        setGenerateError(err.message);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="featured-story">
+      <div className="featured-story-top">
+        <span className={`story-card-urgency story-card-urgency--${item.urgency}`}>
+          {item.urgency}
+        </span>
+        <span className="featured-story-rank">TOP PICK</span>
+      </div>
+
+      <div className="featured-story-body">
+        <div className="featured-story-gauges">
+          <OpportunityDonut score={score} color={opp.color} label={opp.label} />
+          {saturationScore != null && (
+            <SaturationGauge saturationScore={saturationScore} />
+          )}
+        </div>
+
+        <div className="featured-story-content">
+          <div className="featured-story-headline">
+            {story.url ? (
+              <a href={story.url} target="_blank" rel="noopener noreferrer">{story.headline}</a>
+            ) : story.headline}
+          </div>
+
+          <div className="featured-story-meta">
+            {(story.outlet || story.source) && (
+              <span className="article-outlet-badge">{story.outlet || story.source}</span>
+            )}
+            {story.publishedAt && (
+              <span className="featured-story-time">{formatRelative(story.publishedAt)}</span>
+            )}
+            <div
+              className={`recommended-opp-tag recommended-opp-tag--${opp.level}`}
+              style={{ color: opp.color, borderColor: opp.color }}
+            >
+              LANE FIT · {score != null ? `${score}/100` : '—'}
+            </div>
+          </div>
+
+          {story.angle && (
+            <div className="featured-story-angle">
+              <span className="featured-story-angle-label">Angle</span>
+              <p>{story.angle}</p>
+            </div>
+          )}
+
+          {generateError && <div className="alert alert-error" style={{ marginTop: '0.5rem' }}>{generateError}</div>}
+          <button
+            type="button"
+            className="btn btn-primary recommended-cta"
+            onClick={handleGenerateScript}
+            disabled={generating}
+          >
+            {generating ? 'Generating script…' : 'Generate Full Script'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecommendedStoryCard({ passphrase, userName }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -359,12 +469,8 @@ function RecommendedStoryCard({ passphrase, userName }) {
 
   const isEmpty = data?.empty === true;
   const suggestions = data?.suggestions || [];
-  const topStory = data?.article;
-  const opp = data?.opportunity || { level: 'unknown', label: 'Unknown', color: '#9ca3af' };
-  const score = typeof data?.score === 'number'
-    ? data.score
-    : (data?.analysis?.saturation_score != null ? 100 - data.analysis.saturation_score : null);
-  const saturationScore = data?.analysis?.saturation_score ?? (score != null ? 100 - score : null);
+  const featured = suggestions.length > 0 ? suggestions[0] : null;
+  const remaining = suggestions.slice(1);
 
   return (
     <div className="dash-card dash-card--recommended" style={{ gridColumn: '1 / -1' }}>
@@ -392,38 +498,22 @@ function RecommendedStoryCard({ passphrase, userName }) {
         </div>
       )}
 
-      {!isEmpty && topStory && (
+      {!isEmpty && featured && (
         <>
-          {/* Top story summary with gauges */}
-          <div className="recommended-top" style={{ marginBottom: '0.75rem' }}>
-            <OpportunityDonut
-              score={score}
-              color={opp.color}
-              label={opp.label}
-            />
-            {saturationScore != null && (
-              <SaturationGauge saturationScore={saturationScore} />
-            )}
-            <div className="recommended-top-info" style={{ flex: 1 }}>
-              <div
-                className={`recommended-opp-tag recommended-opp-tag--${opp.level}`}
-                style={{ color: opp.color, borderColor: opp.color }}
-              >
-                LANE FIT · {score != null ? `${score}/100` : '—'}
-              </div>
-              <div className="recommended-subline">{score != null ? opp.label : 'Scoring stories…'}</div>
-            </div>
-          </div>
+          {/* Featured #1 story with gauges */}
+          <FeaturedStoryCard
+            item={featured}
+            passphrase={passphrase}
+            userName={userName}
+          />
 
-          {/* Story carousel */}
-          {suggestions.length > 0 ? (
+          {/* Remaining stories in carousel */}
+          {remaining.length > 0 && (
             <StorySuggestionsCarousel
-              suggestions={suggestions}
+              suggestions={remaining}
               passphrase={passphrase}
               userName={userName}
             />
-          ) : (
-            <div className="dash-empty">No story suggestions available.</div>
           )}
         </>
       )}
