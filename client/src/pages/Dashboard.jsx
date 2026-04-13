@@ -116,7 +116,7 @@ function ChannelStatsCard({ passphrase }) {
 }
 
 // Donut/circular gauge — Fanone-lane relevance score (0–100)
-function OpportunityDonut({ score, color, label }) {
+function OpportunityDonut({ score, color, label, gaugeLabel = 'LANE FIT' }) {
   const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
   const size = 110;
   const stroke = 12;
@@ -167,47 +167,54 @@ function OpportunityDonut({ score, color, label }) {
           fontWeight="700"
           letterSpacing="1.2"
         >
-          LANE FIT
+          {gaugeLabel}
         </text>
       </svg>
     </div>
   );
 }
 
-function RecommendedStoryCard({ passphrase, userName }) {
+// Saturation gauge — how covered is the top story on YouTube
+function SaturationGauge({ saturationScore }) {
+  const sat = Math.max(0, Math.min(100, Number(saturationScore) || 0));
+  let color = '#22c55e';
+  let contextLabel = 'Low saturation — fresh opportunity';
+  if (sat >= 70) {
+    color = '#ef4444';
+    contextLabel = 'High saturation — heavily covered';
+  } else if (sat >= 40) {
+    color = '#fbbf24';
+    contextLabel = 'Moderate saturation — find a unique angle';
+  }
+
+  return (
+    <div className="saturation-gauge-card">
+      <OpportunityDonut
+        score={sat}
+        color={color}
+        label={contextLabel}
+        gaugeLabel="SATURATION"
+      />
+      <div className="saturation-gauge-info">
+        <span className="saturation-gauge-label">Topic Saturation</span>
+        <span className="saturation-gauge-context">{contextLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState('');
+  const [filter, setFilter] = useState('All');
+  const [generating, setGenerating] = useState(null);
 
-  const fetchRecommended = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/recommended-story', {
-        headers: { 'x-passphrase': passphrase },
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || 'Failed to load recommended story');
-      setData(body);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [passphrase]);
+  const filtered = filter === 'All'
+    ? suggestions
+    : suggestions.filter(s => s.urgency === filter.toUpperCase());
 
-  useEffect(() => {
-    fetchRecommended();
-  }, [fetchRecommended]);
-
-  const handleGenerateScript = async () => {
-    const story = data?.article;
-    if (!story) return;
-    setGenerating(true);
-    setGenerateError('');
+  const handleGenerateScript = async (story, opp) => {
+    const id = story.id;
+    setGenerating(id);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000);
     try {
@@ -215,7 +222,7 @@ function RecommendedStoryCard({ passphrase, userName }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
         body: JSON.stringify({
-          articleText: story.angle || data?.analysis?.best_angle || story.headline || '',
+          articleText: story.angle || story.headline || '',
           articleTitle: story.headline || '',
           articleSource: story.outlet || story.source || '',
           angleNotes: '',
@@ -233,37 +240,143 @@ function RecommendedStoryCard({ passphrase, userName }) {
         },
       });
     } catch (err) {
-      if (err.name === 'AbortError') {
-        setGenerateError('Script generation timed out after 2 minutes. Try again.');
-      } else {
-        setGenerateError(err.message);
-      }
+      if (err.name !== 'AbortError') alert(err.message);
     } finally {
       clearTimeout(timeoutId);
-      setGenerating(false);
+      setGenerating(null);
     }
   };
 
+  return (
+    <div className="story-carousel-wrap">
+      <div className="urgency-filter-bar">
+        {['All', 'Breaking', 'Evergreen'].map(f => (
+          <button
+            key={f}
+            className={`urgency-filter-btn${filter === f ? ' urgency-filter-btn--active' : ''}`}
+            onClick={() => setFilter(f)}
+            type="button"
+          >
+            {f}
+            {f !== 'All' && (
+              <span style={{ marginLeft: 4, opacity: 0.7 }}>
+                ({suggestions.filter(s => s.urgency === f.toUpperCase()).length})
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="dash-empty">No {filter.toLowerCase()} stories right now.</div>
+      ) : (
+        <div className="story-carousel">
+          {filtered.map((item, i) => {
+            const story = item.article;
+            const opp = item.opportunity || {};
+            const isGenerating = generating === story.id;
+            return (
+              <div className="story-card" key={story.id || i}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <span className={`story-card-urgency story-card-urgency--${item.urgency}`}>
+                    {item.urgency}
+                  </span>
+                  <div className="story-card-score">
+                    <span
+                      className="story-card-score-dot"
+                      style={{ background: opp.color || '#9ca3af' }}
+                    />
+                    {item.score}
+                  </div>
+                </div>
+
+                <div className="story-card-headline">
+                  {story.url ? (
+                    <a href={story.url} target="_blank" rel="noopener noreferrer">
+                      {story.headline}
+                    </a>
+                  ) : story.headline}
+                </div>
+
+                <div className="story-card-meta">
+                  {(story.outlet || story.source) && (
+                    <span className="article-outlet-badge" style={{ fontSize: '0.7rem' }}>
+                      {story.outlet || story.source}
+                    </span>
+                  )}
+                  {story.publishedAt && (
+                    <span>{formatRelative(story.publishedAt)}</span>
+                  )}
+                </div>
+
+                {story.angle && (
+                  <div className="story-card-angle">{story.angle}</div>
+                )}
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ marginTop: 'auto', fontSize: '0.78rem', padding: '0.35rem 0.6rem' }}
+                  onClick={() => handleGenerateScript(story, opp)}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? 'Generating…' : 'Generate Script'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecommendedStoryCard({ passphrase, userName }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const fetchRecommended = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/recommended-story', {
+        headers: { 'x-passphrase': passphrase },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Failed to load recommended stories');
+      setData(body);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [passphrase]);
+
+  useEffect(() => {
+    fetchRecommended();
+  }, [fetchRecommended]);
+
   const isEmpty = data?.empty === true;
-  const story = data?.article;
+  const suggestions = data?.suggestions || [];
+  const topStory = data?.article;
   const opp = data?.opportunity || { level: 'unknown', label: 'Unknown', color: '#9ca3af' };
   const score = typeof data?.score === 'number'
     ? data.score
     : (data?.analysis?.saturation_score != null ? 100 - data.analysis.saturation_score : null);
-  // The opportunity label IS the subline copy from the spec.
-  const subline = score != null ? opp.label : 'Scoring stories…';
+  const saturationScore = data?.analysis?.saturation_score ?? (score != null ? 100 - score : null);
 
   return (
-    <div className="dash-card dash-card--recommended">
+    <div className="dash-card dash-card--recommended" style={{ gridColumn: '1 / -1' }}>
       <div className="dash-card-head">
-        <span className="dash-card-label">Recommended Story</span>
+        <span className="dash-card-label">Story Suggestions</span>
         <button
           type="button"
           className="dash-icon-btn"
           onClick={fetchRecommended}
           disabled={loading}
           title="Refresh"
-          aria-label="Refresh recommended story"
+          aria-label="Refresh story suggestions"
         >↻</button>
       </div>
 
@@ -278,63 +391,40 @@ function RecommendedStoryCard({ passphrase, userName }) {
           {data?.empty_message || 'No high-opportunity stories right now. Check back soon.'}
         </div>
       )}
-      {!loading && !error && !isEmpty && !story && (
-        <div className="dash-empty">No story available right now.</div>
-      )}
 
-      {story && !isEmpty && (
+      {!isEmpty && topStory && (
         <>
-          <div className="recommended-top">
+          {/* Top story summary with gauges */}
+          <div className="recommended-top" style={{ marginBottom: '0.75rem' }}>
             <OpportunityDonut
               score={score}
               color={opp.color}
               label={opp.label}
             />
-            <div className="recommended-top-info">
+            {saturationScore != null && (
+              <SaturationGauge saturationScore={saturationScore} />
+            )}
+            <div className="recommended-top-info" style={{ flex: 1 }}>
               <div
                 className={`recommended-opp-tag recommended-opp-tag--${opp.level}`}
                 style={{ color: opp.color, borderColor: opp.color }}
               >
                 LANE FIT · {score != null ? `${score}/100` : '—'}
               </div>
-              <div className="recommended-meta">
-                {story.outlet && <span className="recommended-outlet">{story.outlet}</span>}
-                {!story.outlet && story.source && <span className="recommended-outlet recommended-outlet--off">{story.source}</span>}
-                {story.publishedAt && (
-                  <span className="recommended-date">{formatDate(story.publishedAt)}</span>
-                )}
-              </div>
-              {story.url ? (
-                <a
-                  className="recommended-headline"
-                  href={story.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {story.headline}
-                </a>
-              ) : (
-                <div className="recommended-headline">{story.headline}</div>
-              )}
-              <div className="recommended-subline">{subline}</div>
+              <div className="recommended-subline">{score != null ? opp.label : 'Scoring stories…'}</div>
             </div>
           </div>
 
-          {(story.angle || data?.analysis?.best_angle) && (
-            <div className="recommended-angle">
-              <span className="recommended-angle-label">Angle</span>
-              <p>{data?.analysis?.best_angle || story.angle}</p>
-            </div>
+          {/* Story carousel */}
+          {suggestions.length > 0 ? (
+            <StorySuggestionsCarousel
+              suggestions={suggestions}
+              passphrase={passphrase}
+              userName={userName}
+            />
+          ) : (
+            <div className="dash-empty">No story suggestions available.</div>
           )}
-          {generateError && <div className="alert alert-error" style={{ marginTop: '0.5rem' }}>{generateError}</div>}
-          <button
-            type="button"
-            className="btn btn-primary recommended-cta"
-            onClick={handleGenerateScript}
-            disabled={generating}
-          >
-            {generating ? 'Generating script…' : 'Generate Full Script'}
-          </button>
         </>
       )}
     </div>
@@ -408,7 +498,10 @@ export default function Dashboard({ passphrase, userName }) {
       {/* Row 1 — channel stats strip */}
       <ChannelStatsCard passphrase={passphrase} />
 
-      {/* Row 2 — Title Generator (60) + Recommended Story (40) */}
+      {/* Row 2 — Story Suggestions (full width carousel with gauges) */}
+      <RecommendedStoryCard passphrase={passphrase} userName={userName} />
+
+      {/* Row 3 — Title Generator (60) + Recent Scripts (40) */}
       <div className="dashboard-grid">
         <div className="dash-card dash-card--title">
           <div className="dash-card-head">
@@ -416,10 +509,10 @@ export default function Dashboard({ passphrase, userName }) {
           </div>
           <TitleTool passphrase={passphrase} userName={userName} />
         </div>
-        <RecommendedStoryCard passphrase={passphrase} userName={userName} />
+        <RecentScriptsCompact passphrase={passphrase} />
       </div>
 
-      {/* Row 3 — Topic Pulse (60) + Recent Scripts (40) */}
+      {/* Row 4 — Topic Pulse */}
       <div className="dashboard-grid">
         <div className="dash-card dash-card--pulse">
           <div className="dash-card-head">
@@ -427,7 +520,6 @@ export default function Dashboard({ passphrase, userName }) {
           </div>
           <TopicPulse passphrase={passphrase} />
         </div>
-        <RecentScriptsCompact passphrase={passphrase} />
       </div>
     </div>
   );

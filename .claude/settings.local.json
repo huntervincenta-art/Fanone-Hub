@@ -6,7 +6,12 @@
       "Bash(node -c server/index.js)",
       "Bash(node --check server/index.js)",
       "Bash(node --check server/routes/topicPulse.js)",
-      "Bash(node --check client/src/pages/Dashboard.jsx)"
+      "Bash(node --check client/src/pages/Dashboard.jsx)",
+      "Bash(node -c server/mfs-system-prompt.js)",
+      "Bash(npx --yes acorn --ecma2022 --module --allow-import-export-everywhere src/pages/Dashboard.jsx)",
+      "Bash(npx --yes acorn --ecma2022 --module --allow-import-export-everywhere src/pages/Scripts.jsx)",
+      "Bash(npx vite:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

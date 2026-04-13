@@ -41,21 +41,125 @@ function formatDate(iso) {
   });
 }
 
-function ScriptDetail({ script, onCopy, onDelete, copiedId, deletingId }) {
-  const sections = useMemo(() => parseScript(script.generatedScript), [script.generatedScript]);
+function ScriptDetail({ script, onCopy, onDelete, onUpdate, copiedId, deletingId, passphrase }) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showPrevious, setShowPrevious] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [regenNotes, setRegenNotes] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState('');
+
+  const displayText = showPrevious && script.previousVersion ? script.previousVersion : script.generatedScript;
+  const sections = useMemo(() => parseScript(displayText), [displayText]);
   const isCopied = copiedId === script.id;
   const isDeleting = deletingId === script.id;
+
+  const startEdit = () => {
+    setEditText(script.generatedScript);
+    setEditing(true);
+    setShowPrevious(false);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setEditText('');
+  };
+
+  const saveEdit = async () => {
+    if (!editText.trim() || editText === script.generatedScript) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/scripts/${script.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({ generatedScript: editText }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to save');
+      }
+      const updated = await res.json();
+      onUpdate(updated);
+      setEditing(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!regenNotes.trim()) return;
+    setRegenerating(true);
+    setRegenError('');
+    try {
+      const res = await fetch(`/api/scripts/${script.id}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({ notes: regenNotes }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to regenerate');
+      }
+      const updated = await res.json();
+      onUpdate(updated);
+      setRegenOpen(false);
+      setRegenNotes('');
+    } catch (err) {
+      setRegenError(err.message);
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   return (
     <div className="scripts-detail">
       <div className="scripts-detail-actions">
+        {!editing && (
+          <button className="btn-ghost" onClick={startEdit} type="button">
+            Edit
+          </button>
+        )}
+        {editing && (
+          <>
+            <button className="btn-ghost" onClick={cancelEdit} disabled={saving} type="button">
+              Cancel
+            </button>
+            <button className="btn-ghost scripts-detail-save" onClick={saveEdit} disabled={saving} type="button">
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </>
+        )}
         <button
           className="btn-ghost"
           onClick={() => onCopy(script)}
           type="button"
         >
-          {isCopied ? 'Copied!' : 'Copy to Clipboard'}
+          {isCopied ? 'Copied!' : 'Copy'}
         </button>
+        <button
+          className="btn-ghost"
+          onClick={() => { setRegenOpen(!regenOpen); setRegenError(''); }}
+          disabled={editing || regenerating}
+          type="button"
+        >
+          Regenerate with Notes
+        </button>
+        {script.previousVersion && (
+          <button
+            className="btn-ghost"
+            onClick={() => { setShowPrevious(!showPrevious); setEditing(false); }}
+            type="button"
+          >
+            {showPrevious ? 'Current Version' : 'Previous Version'}
+          </button>
+        )}
         <button
           className="btn-ghost scripts-detail-delete"
           onClick={() => onDelete(script)}
@@ -66,14 +170,57 @@ function ScriptDetail({ script, onCopy, onDelete, copiedId, deletingId }) {
         </button>
       </div>
 
+      {regenOpen && (
+        <div className="scripts-regen-panel">
+          <textarea
+            className="scripts-regen-textarea"
+            rows={3}
+            value={regenNotes}
+            onChange={e => setRegenNotes(e.target.value)}
+            placeholder="e.g. Make the opening punchier, focus more on the financial angle..."
+            disabled={regenerating}
+          />
+          {regenError && <div className="alert alert-error" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>{regenError}</div>}
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleRegenerate}
+              disabled={regenerating || !regenNotes.trim()}
+              type="button"
+            >
+              {regenerating ? 'Regenerating…' : 'Regenerate'}
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={() => { setRegenOpen(false); setRegenError(''); }}
+              disabled={regenerating}
+              type="button"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {script.angleNotes && (
         <div className="scripts-detail-notes">
           <span className="scripts-detail-notes-label">Angle notes:</span> {script.angleNotes}
         </div>
       )}
 
-      {sections.length === 0 ? (
-        <pre className="script-result-raw">{script.generatedScript}</pre>
+      {showPrevious && script.previousVersion && (
+        <div className="scripts-version-label">Viewing previous version</div>
+      )}
+
+      {editing ? (
+        <textarea
+          className="scripts-edit-textarea"
+          value={editText}
+          onChange={e => setEditText(e.target.value)}
+          disabled={saving}
+        />
+      ) : sections.length === 0 ? (
+        <pre className="script-result-raw">{displayText}</pre>
       ) : (
         <div className="script-result-sections">
           {sections.map((s, i) => (
@@ -150,6 +297,10 @@ export default function Scripts({ passphrase }) {
     }
   };
 
+  const handleUpdate = (updated) => {
+    setScripts(prev => prev.map(s => s.id === updated.id ? updated : s));
+  };
+
   const toggleExpanded = (id) => {
     setExpandedId(prev => (prev === id ? null : id));
   };
@@ -212,8 +363,10 @@ export default function Scripts({ passphrase }) {
                             script={script}
                             onCopy={handleCopy}
                             onDelete={handleDelete}
+                            onUpdate={handleUpdate}
                             copiedId={copiedId}
                             deletingId={deletingId}
+                            passphrase={passphrase}
                           />
                         </td>
                       </tr>

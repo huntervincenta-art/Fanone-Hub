@@ -6314,3 +6314,227 @@ details[open] .notif-all-topics-summary::before {
     flex-wrap: wrap;
   }
 }
+
+/* ── Editable scripts ────────────────────────────── */
+.scripts-edit-textarea {
+  width: 100%;
+  min-height: 400px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+.scripts-edit-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(196, 30, 58, 0.15);
+}
+
+.scripts-detail-save {
+  border-color: rgba(34, 197, 94, 0.5) !important;
+  color: #4ade80 !important;
+}
+.scripts-detail-save:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.12) !important;
+}
+
+.scripts-regen-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+}
+.scripts-regen-textarea {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+.scripts-regen-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.scripts-version-label {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  color: #fbbf24;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Story carousel / suggestions ────────────────── */
+.story-carousel-wrap {
+  position: relative;
+}
+.story-carousel {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.story-carousel::-webkit-scrollbar {
+  height: 6px;
+}
+.story-carousel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.story-carousel::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+}
+
+.story-card {
+  flex: 0 0 260px;
+  scroll-snap-align: start;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: border-color 0.2s;
+  cursor: pointer;
+}
+.story-card:hover {
+  border-color: var(--accent);
+}
+
+.story-card-urgency {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  width: fit-content;
+}
+.story-card-urgency--BREAKING {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.story-card-urgency--EVERGREEN {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.story-card-headline {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.story-card-headline a {
+  color: inherit;
+  text-decoration: none;
+}
+.story-card-headline a:hover {
+  text-decoration: underline;
+}
+
+.story-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.story-card-score {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.story-card-score-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.story-card-angle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  font-style: italic;
+}
+
+/* Urgency filter toggle */
+.urgency-filter-bar {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+.urgency-filter-btn {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.urgency-filter-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.urgency-filter-btn--active {
+  background: rgba(196, 30, 58, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Saturation gauge */
+.saturation-gauge-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem;
+}
+.saturation-gauge-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.saturation-gauge-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.saturation-gauge-context {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.35;
+}

@@ -98,6 +98,39 @@ const APPROVED_SOURCE_NEEDLES = [
   { name: 'MSNBC',           needles: ['msnbc'] },
   { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'] },
   { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'] },
+  { name: 'USA Today',       needles: ['usatoday', 'usa today'] },
+  { name: 'The New Yorker',  needles: ['newyorker', 'new yorker'] },
+  { name: 'Vox',             needles: ['vox.com', 'vox'] },
+  { name: 'Slate',           needles: ['slate.com', 'slate'] },
+  { name: 'Mother Jones',    needles: ['motherjones', 'mother jones'] },
+  { name: 'The Nation',      needles: ['thenation', 'the nation'] },
+  { name: 'HuffPost',        needles: ['huffpost', 'huffington'] },
+  { name: 'Al Jazeera',      needles: ['aljazeera', 'al jazeera'] },
+  { name: 'Foreign Policy',  needles: ['foreignpolicy', 'foreign policy'] },
+  { name: 'The Economist',   needles: ['economist.com', 'the economist'] },
+  { name: 'Newsweek',        needles: ['newsweek'] },
+  { name: 'The Wall Street Journal', needles: ['wsj.com', 'wsj', 'wall street journal'] },
+  { name: 'MarketWatch',     needles: ['marketwatch'] },
+  { name: 'Business Insider', needles: ['businessinsider', 'business insider'] },
+  { name: 'CNBC',            needles: ['cnbc.com', 'cnbc'] },
+  { name: 'Salon',           needles: ['salon.com'] },
+  { name: 'Raw Story',       needles: ['rawstory', 'raw story'] },
+  { name: 'Rolling Stone',   needles: ['rollingstone', 'rolling stone'] },
+  { name: 'Vice News',       needles: ['vice.com', 'vice news'] },
+  { name: 'Stars and Stripes', needles: ['stripes.com', 'stars and stripes'] },
+  { name: 'Military Times',  needles: ['militarytimes', 'military times'] },
+  { name: 'The Marshall Project', needles: ['themarshallproject', 'marshall project'] },
+];
+
+// Tabloid / gossip sources to block — filter these OUT of results
+const TABLOID_BLOCKLIST = [
+  'tmz', 'pagesix', 'page six', 'dailymail', 'daily mail', 'mail online',
+  'nypost.com/pagesix', 'thesun.co.uk', 'the sun', 'mirror.co.uk',
+  'radaronline', 'radar online', 'star magazine', 'us weekly', 'usmagazine',
+  'people.com', 'eonline', 'e! online', 'enews', 'justjared',
+  'perezhilton', 'dlisted', 'egotastic', 'bossip', 'mediatakeout',
+  'nationalenquirer', 'national enquirer', 'infowars', 'breitbart',
+  'oann', 'newsmax', 'gateway pundit', 'thegatewaypundit',
 ];
 
 function matchApprovedOutlet(article) {
@@ -119,6 +152,21 @@ function matchApprovedOutlet(article) {
     }
   }
   return null;
+}
+
+function isTabloidSource(article) {
+  const parts = [];
+  if (article.url || article.link) {
+    try {
+      const u = new URL(article.url || article.link);
+      parts.push(u.hostname.toLowerCase().replace(/^www\./, ''));
+    } catch {}
+  }
+  const src = article.source || article.sourceName || '';
+  if (src) parts.push(String(src).toLowerCase());
+  const hay = parts.join(' ');
+  if (!hay) return false;
+  return TABLOID_BLOCKLIST.some(needle => hay.includes(needle));
 }
 
 // Extract a short, YouTube-searchable topic keyword from a headline.
@@ -183,38 +231,60 @@ function opportunityBucket(saturationScore) {
 // The score is "how good is this story for MFS to cover", not "how uncovered".
 
 const FANONE_HIGH_KEYWORDS = [
-  // law enforcement / DOJ / accountability
+  // Government corruption & accountability (HIGH lane)
+  'corruption', 'corrupt', 'bribe', 'bribery', 'kickback', 'pay-to-play',
+  'whistleblower', 'leak', 'leaked', 'cover up', 'cover-up', 'coverup',
+  'oversight', 'accountability', 'abuse of power', 'misconduct',
+  'inspector general', 'ethics violation', 'conflict of interest',
+  // Law enforcement / policing / criminal justice (HIGH lane)
   'police', 'cop ', 'cops', 'law enforcement', 'sheriff', 'officer', 'officers',
   'doj', 'justice department', 'fbi', 'attorney general', 'prosecutor',
   'indict', 'indicted', 'indictment', 'charges', 'sentenc',
-  'capitol', 'january 6', 'jan. 6', 'jan 6', 'insurrection', 'riot',
-  'corruption', 'corrupt', 'bribe', 'kickback', 'pay-to-play',
-  'whistleblower', 'leak', 'leaked',
-  // immigration enforcement / ice
-  'ice ', 'i.c.e.', 'deport', 'detain', 'detention', 'border patrol',
-  'immigration enforcement', 'raid',
-  // courts & constitution
+  'prison', 'incarcerat', 'bail reform', 'policing', 'use of force',
+  'body cam', 'bodycam', 'internal affairs', 'police reform',
+  // Constitutional law / rule of law (HIGH lane)
   'court', 'judge', 'judges', 'ruling', 'supreme court', 'scotus',
   'constitution', 'unconstitutional', 'first amendment', 'fourth amendment',
-  'due process', 'civil rights', 'voting rights',
-  // veterans / military
-  'veteran', 'veterans', 'military', 'troops', 'service member', 'pentagon',
-  // democracy / oversight / power
+  'due process', 'civil rights', 'voting rights', 'rule of law',
   'democracy', 'authoritarian', 'autocrat', 'dictator', 'fascis',
-  'oversight', 'accountability', 'abuse of power', 'rule of law',
   'pardon', 'commutation', 'martial law', 'emergency powers',
+  // FBI / ATF / DEA / federal law enforcement (HIGH lane)
+  'fbi', 'atf', 'dea', 'task force', 'federal agent', 'undercover',
+  'narcotics', 'drug trafficking', 'trafficking', 'cartel',
+  // Missed angles / underreported (HIGH lane — boost signals)
+  'buried', 'underreported', 'overlooked', 'nobody is talking about',
+  'quietly', 'slipped through', 'under the radar',
+  // Immigration enforcement
+  'ice ', 'i.c.e.', 'deport', 'detain', 'detention', 'border patrol',
+  'immigration enforcement', 'raid',
 ];
 
 const FANONE_MEDIUM_KEYWORDS = [
+  // Political extremism (MEDIUM lane)
+  'extremis', 'radical', 'militia', 'proud boys', 'oath keeper',
+  'domestic terror', 'white nationalist', 'white supremac',
+  'capitol', 'january 6', 'jan. 6', 'jan 6', 'insurrection',
+  // Foreign affairs / national security (MEDIUM lane)
+  'national security', 'foreign policy', 'intelligence', 'cia', 'nsa',
+  'sanctions', 'nato', 'ally', 'allies', 'diplomacy', 'diplomat',
+  'pentagon', 'military', 'troops', 'veteran', 'veterans', 'service member',
+  // Financial crimes / fraud (MEDIUM lane)
+  'fraud', 'embezzl', 'money laundering', 'ponzi', 'wire fraud',
+  'tax evasion', 'financial crime', 'securities fraud',
+  // General political (MEDIUM)
   'trump administration', 'white house', 'congress', 'senate', 'house of representatives',
   'policy', 'legislation', 'bill', 'vote', 'hearing', 'subpoena',
   'federal agency', 'agency', 'cabinet', 'secretary',
   'government spending', 'budget', 'funding cut', 'shutdown',
   'executive order', 'directive', 'memo',
-  'gop', 'maga', 'democrat', 'republican', 'biden', 'harris',
 ];
 
 const FANONE_LOW_KEYWORDS = [
+  // Generic partisan commentary with no unique angle (LOW — deprioritize)
+  'slams', 'blasts', 'claps back', 'destroys', 'owned',
+  'hot take', 'opinion poll', 'approval rating',
+  'gop', 'maga', 'democrat', 'republican',
+  // Celebrity / entertainment / sports
   'celebrity', 'oscars', 'grammy', 'hollywood',
   'kardashian', 'taylor swift', 'kanye',
   'nfl', 'nba', 'mlb', 'soccer', 'olympic',
@@ -230,6 +300,14 @@ const FANONE_IMPACT_KEYWORDS = [
   'crisis', 'scandal', 'cover up', 'cover-up',
   'arrested', 'detained', 'raid',
   'overturned', 'blocked', 'struck down', 'guilty', 'convicted',
+];
+
+// Keywords that signal a story is time-sensitive (BREAKING vs EVERGREEN)
+const BREAKING_KEYWORDS = [
+  'breaking', 'just in', 'developing', 'happening now',
+  'arrested today', 'just arrested', 'just indicted', 'just ruled',
+  'emergency', 'shooting', 'active', 'unfolding',
+  'hours ago', 'minutes ago', 'just announced',
 ];
 
 function scoreHeadlineForFanone(article) {
@@ -280,8 +358,9 @@ function scoreHeadlineForFanone(article) {
 
   // Recency bonus: <6h +10, 6–12h +5, 12–24h 0, >24h -10
   const pubMs = article.publishedAt ? new Date(article.publishedAt).getTime() : 0;
+  let ageHours = Infinity;
   if (pubMs) {
-    const ageHours = (Date.now() - pubMs) / (1000 * 60 * 60);
+    ageHours = (Date.now() - pubMs) / (1000 * 60 * 60);
     if (ageHours <= 6) score += 10;
     else if (ageHours <= 12) score += 5;
     else if (ageHours > 24) score -= 10;
@@ -290,7 +369,17 @@ function scoreHeadlineForFanone(article) {
   // Clamp to 0–100
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  return { score, matched };
+  // Urgency classification: BREAKING vs EVERGREEN
+  // Default to EVERGREEN — Fanone does commentary, not breaking news
+  let urgency = 'EVERGREEN';
+  const breakingMatches = BREAKING_KEYWORDS.filter(kw => text.includes(kw));
+  if (breakingMatches.length >= 2 && ageHours <= 6) {
+    urgency = 'BREAKING';
+  } else if (breakingMatches.length >= 1 && ageHours <= 3) {
+    urgency = 'BREAKING';
+  }
+
+  return { score, matched, urgency };
 }
 
 function fanoneOpportunityBucket(score) {
@@ -347,8 +436,11 @@ async function fetchHeadlinePool() {
   const keywordFiltered = workingPool.filter(a =>
     POLITICAL_KEYWORDS.test(a.title) || POLITICAL_KEYWORDS.test(a.description)
   );
-  const fullFiltered = keywordFiltered.filter(a => !JUNK_TITLE_WORDS.test(a.title));
+  const junkFiltered = keywordFiltered.filter(a => !JUNK_TITLE_WORDS.test(a.title));
+  // Filter out tabloid/gossip sources
+  const fullFiltered = junkFiltered.filter(a => !isTabloidSource(a));
   const filteredPool = fullFiltered.length >= 3 ? fullFiltered
+    : junkFiltered.length >= 3 ? junkFiltered
     : keywordFiltered.length >= 3 ? keywordFiltered : workingPool;
 
   filteredPool.sort((a, b) => (b.pubMs || 0) - (a.pubMs || 0));
@@ -483,13 +575,15 @@ const hunterUpdateSchema = new mongoose.Schema({
 }, { versionKey: false });
 
 const scriptSchema = new mongoose.Schema({
-  _id:             { type: String, default: () => Date.now().toString() },
-  articleTitle:    { type: String, default: '' },
-  articleSource:   { type: String, default: '' },
-  angleNotes:      { type: String, default: '' },
-  generatedScript: { type: String, required: true },
-  generatedBy:    { type: String, default: '' },
-  createdAt:       { type: String, default: () => new Date().toISOString() },
+  _id:              { type: String, default: () => Date.now().toString() },
+  articleTitle:     { type: String, default: '' },
+  articleSource:    { type: String, default: '' },
+  angleNotes:       { type: String, default: '' },
+  generatedScript:  { type: String, required: true },
+  previousVersion:  { type: String, default: '' },
+  generatedBy:      { type: String, default: '' },
+  createdAt:        { type: String, default: () => new Date().toISOString() },
+  updatedAt:        { type: String, default: '' },
 }, { versionKey: false, collection: 'scripts' });
 
 const Story        = mongoose.model('Story', storySchema);
@@ -1217,62 +1311,71 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
     }
 
     recommendedStoryInflight = (async () => {
-      // Self-contained: pull headlines from Google News RSS independent of any
-      // other endpoint's cache. This works on first dashboard load.
       const pool = await fetchHeadlinePool();
 
       if (!pool.length) {
         throw new Error('No articles available from Google News RSS');
       }
 
-      // Tag with approved-source matches but score everything in the pool.
-      // Approved sources get a small lane bonus on top of the relevance score.
       const tagged = pool.map(a => {
         const outlet = matchApprovedOutlet(a);
         return { ...a, outlet };
       });
 
-      // Score every article on Fanone-lane relevance.
       const scored = tagged.map(article => {
-        const { score: baseScore, matched } = scoreHeadlineForFanone(article);
-        // +5 trust bonus if the article is from an approved source.
+        const { score: baseScore, matched, urgency } = scoreHeadlineForFanone(article);
         const finalScore = Math.max(0, Math.min(100, baseScore + (article.outlet ? 5 : 0)));
-        return { article, score: finalScore, matched };
+        return { article, score: finalScore, matched, urgency };
       });
 
-      // Sort highest score first.
       scored.sort((a, b) => b.score - a.score);
 
-      // Always pick the #1 highest-relevance story — no thresholding.
-      const pick = scored[0];
+      // Take top 9 stories for the carousel
+      const topPicks = scored.slice(0, 9);
 
-      console.log('[recommended-story] top 5:', scored.slice(0, 5).map(s => `${s.score} | ${s.article.headline}`));
+      console.log('[recommended-story] top 9:', topPicks.map(s => `${s.score}|${s.urgency}| ${s.article.headline}`));
 
-      // Generate a one-line MFS angle suggestion for the chosen story.
-      const angleLine = await generateAngleLine(
-        pick.article.headline,
-        pick.article.outlet || pick.article.source
+      // Generate angle lines for top 3 in parallel, rest get empty angles
+      const anglePromises = topPicks.slice(0, 3).map(pick =>
+        generateAngleLine(pick.article.headline, pick.article.outlet || pick.article.source)
+          .catch(() => '')
       );
+      const angles = await Promise.all(anglePromises);
 
-      const opportunity = fanoneOpportunityBucket(pick.score);
+      const suggestions = topPicks.map((pick, i) => {
+        const angleLine = i < 3 ? angles[i] : '';
+        const opportunity = fanoneOpportunityBucket(pick.score);
+        return {
+          article: {
+            id:          pick.article.url || pick.article.headline,
+            headline:    pick.article.headline,
+            source:      pick.article.source || '',
+            outlet:      pick.article.outlet || null,
+            url:         pick.article.url || '',
+            publishedAt: pick.article.publishedAt || '',
+            angle:       angleLine,
+          },
+          score:      pick.score,
+          matched:    pick.matched,
+          urgency:    pick.urgency,
+          opportunity,
+          lifecycle:  opportunity.level === 'high' ? 'Rising'
+                    : opportunity.level === 'moderate' ? 'Peak'
+                    : 'Off-lane',
+        };
+      });
 
+      // Top pick for back-compat
+      const pick = suggestions[0];
       const data = {
-        article: {
-          id:          pick.article.url || pick.article.headline,
-          headline:    pick.article.headline,
-          source:      pick.article.source || '',
-          outlet:      pick.article.outlet || null,
-          url:         pick.article.url || '',
-          publishedAt: pick.article.publishedAt || '',
-          angle:       angleLine,
-        },
-        score:        pick.score,
-        matched:      pick.matched,
-        opportunity,
-        // Back-compat shape for the existing donut/subline UI:
+        article:    pick.article,
+        score:      pick.score,
+        matched:    pick.matched,
+        urgency:    pick.urgency,
+        opportunity: pick.opportunity,
         analysis: {
-          saturation_score: 100 - pick.score, // donut renders 100 - sat = score
-          best_angle:       angleLine,
+          saturation_score: 100 - pick.score,
+          best_angle:       pick.article.angle,
           recommendation:   '',
           dominant_framing: '',
           trends:           null,
@@ -1280,12 +1383,12 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
           avg_views_per_video: 0,
           upload_velocity:     0,
         },
-        lifecycle: opportunity.level === 'high' ? 'Rising'
-                 : opportunity.level === 'moderate' ? 'Peak'
-                 : 'Off-lane',
+        lifecycle: pick.lifecycle,
         empty: false,
         scored_at: new Date().toISOString(),
         candidates_considered: scored.length,
+        // New: all story suggestions for carousel
+        suggestions,
       };
 
       recommendedStoryCache = { data, expiresAt: Date.now() + RECOMMENDED_STORY_CACHE_TTL_MS };
@@ -1791,7 +1894,7 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
       },
       {
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8000,
+        max_tokens: 12000,
         system: MFS_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }
@@ -1847,6 +1950,93 @@ app.delete('/api/scripts/:id', requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('DELETE /api/scripts/:id error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/scripts/:id — update script text (manual edits)
+app.put('/api/scripts/:id', requireAuth, async (req, res) => {
+  try {
+    const { generatedScript } = req.body || {};
+    if (!generatedScript || !generatedScript.trim()) {
+      return res.status(400).json({ error: 'generatedScript is required' });
+    }
+    const existing = await Script.findById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Script not found' });
+
+    existing.previousVersion = existing.generatedScript;
+    existing.generatedScript = generatedScript;
+    existing.updatedAt = new Date().toISOString();
+    await existing.save();
+
+    const obj = existing.toObject();
+    obj.id = obj._id;
+    delete obj._id;
+    res.json(obj);
+  } catch (err) {
+    console.error('PUT /api/scripts/:id error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/scripts/:id/regenerate — regenerate script with user notes
+app.post('/api/scripts/:id/regenerate', requireAuth, async (req, res) => {
+  const { notes = '', user = '' } = req.body || {};
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured' });
+  }
+  try {
+    const existing = await Script.findById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Script not found' });
+
+    const userMessage =
+      `You previously generated a script for this story. The user wants a revised version.\n\n` +
+      `Original article title: ${existing.articleTitle}\n` +
+      `Original article source: ${existing.articleSource}\n` +
+      `${existing.angleNotes ? 'Original angle notes: ' + existing.angleNotes + '\n' : ''}` +
+      `\n--- CURRENT SCRIPT ---\n${existing.generatedScript}\n--- END SCRIPT ---\n\n` +
+      `User feedback / revision notes: ${notes}\n\n` +
+      `Please generate a revised script package incorporating this feedback. Keep the same output format.`;
+
+    const anthropicRes = await httpsRequest(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        timeout: 120000,
+      },
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 12000,
+        system: MFS_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      }
+    );
+
+    if (anthropicRes.status !== 200) {
+      const errBody = anthropicRes.body || {};
+      const errMsg = (errBody.error && errBody.error.message) || JSON.stringify(errBody);
+      return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
+    }
+
+    const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
+
+    existing.previousVersion = existing.generatedScript;
+    existing.generatedScript = script;
+    existing.updatedAt = new Date().toISOString();
+    await existing.save();
+
+    const obj = existing.toObject();
+    obj.id = obj._id;
+    delete obj._id;
+    res.json(obj);
+  } catch (err) {
+    console.error('POST /api/scripts/:id/regenerate error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1912,12 +2102,15 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
     const keywordFiltered = workingPool.filter(a =>
       POLITICAL_KEYWORDS.test(a.title) || POLITICAL_KEYWORDS.test(a.description)
     );
-    const fullFiltered = keywordFiltered.filter(a => !JUNK_TITLE_WORDS.test(a.title));
+    const junkFiltered = keywordFiltered.filter(a => !JUNK_TITLE_WORDS.test(a.title));
+    // Filter out tabloid/gossip sources
+    const fullFiltered = junkFiltered.filter(a => !isTabloidSource(a));
     const filteredPool = fullFiltered.length >= 3 ? fullFiltered
+      : junkFiltered.length >= 3 ? junkFiltered
       : keywordFiltered.length >= 3 ? keywordFiltered : workingPool;
 
     filteredPool.sort((a, b) => (b.pubMs || 0) - (a.pubMs || 0));
-    const articles = filteredPool.slice(0, 10);
+    const articles = filteredPool.slice(0, 15);
 
     console.log('[find-stories] pool:', pool.length, '| timeFiltered:', timeFiltered.length, '| after junk filter:', filteredPool.length, '| enriching:', articles.length, '| freshest:', articles[0]?.pubDate || 'none');
 
