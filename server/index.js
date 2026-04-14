@@ -263,7 +263,7 @@ const FANONE_MEDIUM_KEYWORDS = [
   // Political extremism (MEDIUM lane)
   'extremis', 'radical', 'militia', 'proud boys', 'oath keeper',
   'domestic terror', 'white nationalist', 'white supremac',
-  'capitol', 'january 6', 'jan. 6', 'jan 6', 'insurrection',
+  'capitol', 'january 6', 'jan. 6', 'jan 6',
   // Foreign affairs / national security (MEDIUM lane)
   'national security', 'foreign policy', 'intelligence', 'cia', 'nsa',
   'sanctions', 'nato', 'ally', 'allies', 'diplomacy', 'diplomat',
@@ -472,7 +472,7 @@ async function generateAngleLine(headline, source) {
       {
         model: 'claude-opus-4-6',
         max_tokens: 180,
-        system: 'You are a producer for The Michael Fanone Show, a progressive political YouTube channel hosted by former DC police officer Michael Fanone. Suggest one strong editorial angle the show could take on a news story. Be concrete, specific, and under 35 words. Return only the angle as plain prose — no preamble, no labels, no quotation marks.',
+        system: 'You are a producer for The Michael Fanone Show, a progressive political YouTube channel hosted by former DC police officer Michael Fanone. Suggest one strong editorial angle the show could take on a news story. Be concrete, specific, and under 35 words. Return only the angle as plain prose — no preamble, no labels, no quotation marks. NEVER suggest angles that connect unrelated stories to January 6th. Only mention January 6th if the story is LITERALLY about January 6th events, defendants, or hearings. Find angles based on corruption, law enforcement, constitutional issues, accountability, foreign policy, or Fanone\'s broader 20-year law enforcement expertise instead.',
         messages: [{
           role: 'user',
           content: `Suggest one strong editorial angle for The Michael Fanone Show based on this headline: "${headline}"${source ? ` (source: ${source})` : ''}`,
@@ -1755,7 +1755,7 @@ app.get('/api/activity-log', requireAuth, async (req, res) => {
 });
 
 // POST /api/title-tool — generate MFS-style YouTube titles and thumbnail text
-const MFS_TITLE_SYSTEM_PROMPT = `You are the title generator for The Michael Fanone Show (MFS), a progressive political YouTube channel hosted by Michael Fanone — a former D.C. police officer who nearly died defending the Capitol on January 6, 2021. The channel averages 200K-500K views on top videos.
+const MFS_TITLE_SYSTEM_PROMPT = `You are the title generator for The Michael Fanone Show (MFS), a progressive political YouTube channel hosted by Michael Fanone — a 20-year law enforcement veteran, former D.C. police officer, FBI/ATF/DEA task force member, and NYT bestselling author. The channel averages 200K-500K views on top videos. Do not reference January 6th in titles unless the video is specifically about January 6th events.
 
 Given an article, headline, or summary, generate 5 YouTube title options and 3 thumbnail text options.
 
@@ -2131,7 +2131,7 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
           {
             model: 'claude-opus-4-6',
             max_tokens: 512,
-            system: 'You are a political news producer for a left-leaning news channel. The current year is 2026. Donald Trump is the sitting President of the United States — always refer to him as "President Trump" or "Trump," never as "former president" or "ex-president." Given this headline and description, provide: 1) A brief anti-Trump or pro-Democrat angle explaining why this story matters, 2) Three suggested headlines in a punchy cable news style. Return as JSON with fields: angle, titles (array of 3 strings). Return only valid JSON, no other text.',
+            system: 'You are a political news producer for The Michael Fanone Show, a progressive political YouTube channel. The current year is 2026. Donald Trump is the sitting President of the United States — always refer to him as "President Trump" or "Trump," never as "former president" or "ex-president." Given this headline and description, provide: 1) A brief angle explaining why this story matters, drawing on themes of corruption, accountability, law enforcement, constitutional law, foreign policy, or institutional failure, 2) Three suggested headlines in a punchy cable news style. CRITICAL: Do NOT connect stories to January 6th or the Capitol attack unless the story is literally about those events. Find angles based on Fanone\'s broader expertise instead. Return as JSON with fields: angle, titles (array of 3 strings). Return only valid JSON, no other text.',
             messages: [
               {
                 role: 'user',
