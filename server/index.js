@@ -1873,8 +1873,9 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
   }
 
+  const todayStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const userMessage =
-    `Generate a full MFS script package from this story:\n\n` +
+    `Today's date is ${todayStr}. Generate a full MFS script package from this story:\n\n` +
     `Title: ${articleTitle}\n` +
     `Source: ${articleSource}\n\n` +
     `${articleText}\n\n` +
@@ -1989,8 +1990,9 @@ app.post('/api/scripts/:id/regenerate', requireAuth, async (req, res) => {
     const existing = await Script.findById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Script not found' });
 
+    const todayStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const userMessage =
-      `You previously generated a script for this story. The user wants a revised version.\n\n` +
+      `Today's date is ${todayStr}. You previously generated a script for this story. The user wants a revised version.\n\n` +
       `Original article title: ${existing.articleTitle}\n` +
       `Original article source: ${existing.articleSource}\n` +
       `${existing.angleNotes ? 'Original angle notes: ' + existing.angleNotes + '\n' : ''}` +
