@@ -3904,6 +3904,25 @@ html[data-theme="light"] .hub-table tbody tr.hub-row--flagged:hover {
   color: #fbbf24;
 }
 
+.hub-action-btn--script {
+  opacity: 1;
+  color: #f59e0b;
+}
+.hub-action-btn--script:hover {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+}
+.hub-script-icon {
+  font-size: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .hub-script-label {
+    display: none;
+  }
+}
+
 .hub-action-btn--train {
   opacity: 1;
   color: #a78bfa;

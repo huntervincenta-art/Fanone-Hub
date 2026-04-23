@@ -19,6 +19,8 @@ const { XMLParser } = require('fast-xml-parser');
 const topicPulseRouter = require('./routes/topicPulse');
 const { analyzeSubject: tpAnalyzeSubject } = require('./routes/topicPulse');
 const MFS_SYSTEM_PROMPT = require('./mfs-system-prompt');
+const { classifyUrl, extractYouTubeId } = require('./utils/urlType');
+const { fetchTranscript: fetchYouTubeTranscript } = require('./utils/youtubeTranscript');
 
 // Shared HTTPS agent with connection pooling to prevent ENOBUFS from too many open sockets
 const pooledAgent = new https.Agent({
@@ -1928,6 +1930,125 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
     res.json({ script, id: savedId });
   } catch (err) {
     console.error('POST /api/generate-script error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/fanone/generate-script-from-url — generate MFS script from a URL (article or YouTube)
+app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) => {
+  const { url = '', angleNotes = '', storyId = '' } = req.body || {};
+  const user = req.body.user || '';
+  if (!url.trim()) return res.status(400).json({ error: 'url is required' });
+  if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
+
+  const urlType = classifyUrl(url);
+  if (urlType === 'unsupported') {
+    return res.status(400).json({ error: 'Only news articles and YouTube videos are supported right now.' });
+  }
+
+  let sourceText = '';
+  let articleTitle = '';
+  let articleSource = '';
+
+  try {
+    if (urlType === 'youtube') {
+      const videoId = extractYouTubeId(url);
+      if (!videoId) return res.status(400).json({ error: 'Could not extract YouTube video ID from this URL.' });
+      try {
+        const chunks = await fetchYouTubeTranscript(videoId);
+        sourceText = chunks.map(c => c.text).join(' ');
+      } catch (ytErr) {
+        console.error('[generate-script-from-url] YouTube transcript error:', ytErr.message);
+        return res.status(400).json({ error: 'No transcript available for this YouTube video.' });
+      }
+      articleSource = 'YouTube';
+      articleTitle = url;
+    } else {
+      // article — fetch page and extract text
+      try {
+        const pageRes = await httpsRequest(url, { timeout: 20000 });
+        const html = typeof pageRes.body === 'string' ? pageRes.body : JSON.stringify(pageRes.body);
+        // Strip HTML tags, scripts, styles to get plain text
+        sourceText = html
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+        if (!sourceText || sourceText.length < 100) {
+          return res.status(400).json({ error: 'Could not fetch article text from this URL.' });
+        }
+        // Truncate to ~12000 chars to stay within Claude context limits
+        if (sourceText.length > 12000) sourceText = sourceText.slice(0, 12000);
+      } catch (fetchErr) {
+        console.error('[generate-script-from-url] article fetch error:', fetchErr.message);
+        return res.status(400).json({ error: 'Could not fetch article text from this URL.' });
+      }
+      try { articleSource = new URL(url).hostname.replace(/^www\./, ''); } catch { articleSource = url; }
+      articleTitle = url;
+    }
+
+    // Reuse the same script generation logic as /api/generate-script
+    const todayStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const userMessage =
+      `Today's date is ${todayStr}. Generate a full MFS script package from this story:\n\n` +
+      `Title: ${articleTitle}\n` +
+      `Source: ${articleSource}\n\n` +
+      `${sourceText}\n\n` +
+      `${angleNotes ? 'Angle notes: ' + angleNotes : ''}`;
+
+    const anthropicRes = await httpsRequest(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        timeout: 120000,
+      },
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 16000,
+        system: MFS_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      }
+    );
+
+    if (anthropicRes.status !== 200) {
+      const errBody = anthropicRes.body || {};
+      const errMsg = (errBody.error && errBody.error.message) || JSON.stringify(errBody);
+      console.error('[generate-script-from-url] Anthropic error | status:', anthropicRes.status, '| body:', JSON.stringify(errBody));
+      return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
+    }
+
+    const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
+
+    let savedId = null;
+    try {
+      const saved = await new Script({
+        articleTitle:    articleTitle || '',
+        articleSource:   articleSource || '',
+        angleNotes:      angleNotes || '',
+        generatedScript: script,
+        generatedBy:     user || '',
+      }).save();
+      savedId = saved._id;
+    } catch (saveErr) {
+      console.error('[generate-script-from-url] failed to persist script:', saveErr.message);
+    }
+
+    res.json({ script, id: savedId });
+  } catch (err) {
+    console.error('POST /api/fanone/generate-script-from-url error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

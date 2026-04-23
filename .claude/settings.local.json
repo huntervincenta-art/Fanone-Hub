@@ -11,7 +11,10 @@
       "Bash(npx --yes acorn --ecma2022 --module --allow-import-export-everywhere src/pages/Dashboard.jsx)",
       "Bash(npx --yes acorn --ecma2022 --module --allow-import-export-everywhere src/pages/Scripts.jsx)",
       "Bash(npx vite:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(node -e \"const { YoutubeTranscript } = require\\('youtube-transcript'\\); console.log\\(typeof YoutubeTranscript.fetchTranscript\\)\")",
+      "Bash(node -e \"const yt = require\\('youtube-transcript'\\); console.log\\(Object.keys\\(yt\\)\\)\")",
+      "Bash(node:*)"
     ]
   }
 }

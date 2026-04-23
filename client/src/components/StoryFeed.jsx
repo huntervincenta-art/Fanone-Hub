@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { HOSTS, getHostColor } from '../config/hosts';
 
 const TrashIcon = () => (
@@ -82,6 +83,55 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
   });
   const [newStoryIds, setNewStoryIds] = useState(new Set());
   const prevStoryIdsRef = useRef(null);
+
+  const navigate = useNavigate();
+
+  // Script modal
+  const [scriptModalStory, setScriptModalStory] = useState(null);
+  const [scriptAngleNotes, setScriptAngleNotes] = useState('');
+  const [generatingScript, setGeneratingScript] = useState(false);
+  const [scriptError, setScriptError] = useState('');
+
+  const openScriptModal = (story) => { setScriptModalStory(story); setScriptAngleNotes(''); setScriptError(''); };
+  const closeScriptModal = () => { if (generatingScript) return; setScriptModalStory(null); setScriptAngleNotes(''); setScriptError(''); };
+  const handleGenerateScript = async () => {
+    if (!scriptModalStory) return;
+    setGeneratingScript(true);
+    setScriptError('');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    try {
+      const res = await fetch('/api/fanone/generate-script-from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({
+          url: scriptModalStory.link,
+          angleNotes: scriptAngleNotes.trim(),
+          storyId: scriptModalStory.id,
+          user: userName,
+        }),
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to generate script');
+      navigate('/script-result', {
+        state: {
+          script: data.script,
+          articleTitle: scriptModalStory.headline || '',
+          articleSource: scriptModalStory.link || '',
+        },
+      });
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        setScriptError('Script generation timed out after 2 minutes. Try again.');
+      } else {
+        setScriptError(err.message);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      setGeneratingScript(false);
+    }
+  };
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -720,6 +770,16 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                           <span className="hub-comment-badge">{commentCounts[story.id]}</span>
                         )}
                       </span>
+                      {story.link && isURL(story.link) && (
+                        <button
+                          className="hub-action-btn hub-action-btn--script"
+                          onClick={() => openScriptModal(story)}
+                          title="Generate MFS Script from URL"
+                        >
+                          <span className="hub-script-icon" aria-hidden="true">📜</span>
+                          <span className="hub-script-label"> Script</span>
+                        </button>
+                      )}
                       <button
                         className="hub-action-btn"
                         onClick={() => editingId === story.id ? cancelEdit() : startEdit(story)}
@@ -989,6 +1049,16 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                           <span className="hub-comment-badge">{commentCounts[story.id]}</span>
                         )}
                       </span>
+                      {story.link && isURL(story.link) && (
+                        <button
+                          className="hub-action-btn hub-action-btn--script"
+                          onClick={() => openScriptModal(story)}
+                          title="Generate MFS Script from URL"
+                        >
+                          <span className="hub-script-icon" aria-hidden="true">📜</span>
+                          <span className="hub-script-label"> Script</span>
+                        </button>
+                      )}
                       <button
                         className={`hub-action-btn hub-action-btn--flag${story.flagged ? ' hub-action-btn--flag-active' : ''}`}
                         onClick={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
@@ -1017,6 +1087,66 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
         </div>
 
       </div>}
+
+      {/* ── Script generator modal ── */}
+      {scriptModalStory && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget) closeScriptModal(); }}
+        >
+          <div className="modal-panel script-modal">
+            <div className="modal-header">
+              <span className="modal-title">Generate MFS Script</span>
+              <button className="modal-close" onClick={closeScriptModal} disabled={generatingScript}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="script-modal-article">
+                <div className="script-modal-label">Story</div>
+                <div className="script-modal-headline">{scriptModalStory.headline}</div>
+                {scriptModalStory.link && (
+                  <div className="script-modal-source">{scriptModalStory.link}</div>
+                )}
+              </div>
+              <label className="script-modal-field-label" htmlFor="script-angle-notes">Angle Notes (optional)</label>
+              <textarea
+                id="script-angle-notes"
+                className="script-modal-textarea"
+                rows={4}
+                value={scriptAngleNotes}
+                onChange={e => setScriptAngleNotes(e.target.value)}
+                placeholder="e.g. Focus on the law enforcement hypocrisy angle..."
+                disabled={generatingScript}
+              />
+              {scriptError && (
+                <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{scriptError}</div>
+              )}
+              <div className="script-modal-actions">
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={closeScriptModal}
+                  disabled={generatingScript}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={handleGenerateScript}
+                  disabled={generatingScript}
+                >
+                  {generatingScript ? (
+                    <>
+                      <span className="script-spinner" aria-hidden="true" />
+                      Generating…
+                    </>
+                  ) : 'Generate'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
