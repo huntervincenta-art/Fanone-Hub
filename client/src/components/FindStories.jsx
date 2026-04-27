@@ -534,17 +534,20 @@ export default function FindStories({ passphrase, userName }) {
                   <div className={`article-card${done ? ' article-card--done' : ''}`} key={article.id}>
                     <div className="article-card-meta">
                       {article.category && (
-                        <span className={`story-card-category story-card-category--${article.category === 'Law Enforcement' ? 'le' : 'pc'}`}>
+                        <span
+                          className={`story-card-category story-card-category--${article.category === 'Law Enforcement' ? 'le' : 'pc'}`}
+                          title={article.category === 'Law Enforcement' ? 'Law Enforcement — police, courts, DOJ, FBI, crime, civil rights' : 'Political Commentary — politics, elections, policy, Congress, White House'}
+                        >
                           {article.category === 'Law Enforcement' ? 'LE' : 'PC'}
                         </span>
                       )}
                       {(article.outlet || article.source) && (
-                        <span className="article-source article-outlet-badge">
+                        <span className="article-source article-outlet-badge" title={`Source: ${article.outlet || article.source}`}>
                           {article.outlet || article.source}
                         </span>
                       )}
                       {article.isInternational && (
-                        <span className="article-international-badge">INTERNATIONAL</span>
+                        <span className="article-international-badge" title="International publisher (not US-based)">INTERNATIONAL</span>
                       )}
                       {article.publishedAt && (
                         <span

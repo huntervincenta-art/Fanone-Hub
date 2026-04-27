@@ -2188,7 +2188,7 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
       : keywordFiltered.length >= 3 ? keywordFiltered : workingPool;
 
     filteredPool.sort((a, b) => (b.pubMs || 0) - (a.pubMs || 0));
-    const articles = filteredPool.slice(0, 20);
+    const articles = filteredPool.slice(0, 40);
 
     console.log('[find-stories] pool:', pool.length, '| timeFiltered:', timeFiltered.length, '| after junk filter:', filteredPool.length, '| enriching:', articles.length, '| freshest:', articles[0]?.pubDate || 'none');
 

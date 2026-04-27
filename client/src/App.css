@@ -7336,12 +7336,25 @@ details[open] .notif-all-topics-summary::before {
   margin-bottom: 0.85rem;
   flex-wrap: wrap;
   gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
 }
 
 .tp-stories-header h3 {
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tp-stories-chevron {
+  font-size: 0.85rem;
+  color: var(--muted);
+  transition: transform 0.15s;
+  width: 14px;
+  display: inline-block;
 }
 
 .tp-stories-controls {
@@ -7409,6 +7422,13 @@ details[open] .notif-all-topics-summary::before {
 .tp-load-more {
   display: block;
   margin: 0 auto;
+}
+
+.tp-all-loaded {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0.5rem 0;
 }
 
 .tp-prev-batch-btn {

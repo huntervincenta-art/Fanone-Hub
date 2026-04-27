@@ -221,10 +221,13 @@ function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
             return (
               <div className="story-card" key={story.id || i}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}>
+                  <span
+                    className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}
+                    title={item.category === 'Law Enforcement' ? 'Law Enforcement — police, courts, DOJ, FBI, crime, civil rights' : 'Political Commentary — politics, elections, policy, Congress, White House'}
+                  >
                     {item.category === 'Law Enforcement' ? 'Law Enforcement' : 'Political Commentary'}
                   </span>
-                  <div className="story-card-score">
+                  <div className="story-card-score" title={`Lane Fit Score: ${item.score}/100 — based on Fanone's proven high-performing categories`}>
                     <span
                       className="story-card-score-dot"
                       style={{ background: opp.color || '#9ca3af' }}
@@ -243,7 +246,7 @@ function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
 
                 <div className="story-card-meta">
                   {(story.outlet || story.source) && (
-                    <span className="article-outlet-badge" style={{ fontSize: '0.7rem' }}>
+                    <span className="article-outlet-badge" style={{ fontSize: '0.7rem' }} title={`Source: ${story.outlet || story.source}`}>
                       {story.outlet || story.source}
                     </span>
                   )}
@@ -326,7 +329,10 @@ function FeaturedStoryCard({ item, passphrase, userName }) {
   return (
     <div className="featured-story">
       <div className="featured-story-top">
-        <span className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}>
+        <span
+          className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}
+          title={item.category === 'Law Enforcement' ? 'Law Enforcement — police, courts, DOJ, FBI, crime, civil rights' : 'Political Commentary — politics, elections, policy, Congress, White House'}
+        >
           {item.category === 'Law Enforcement' ? 'Law Enforcement' : 'Political Commentary'}
         </span>
         <span className="featured-story-rank">TOP PICK</span>
@@ -349,7 +355,7 @@ function FeaturedStoryCard({ item, passphrase, userName }) {
 
           <div className="featured-story-meta">
             {(story.outlet || story.source) && (
-              <span className="article-outlet-badge">{story.outlet || story.source}</span>
+              <span className="article-outlet-badge" title={`Source: ${story.outlet || story.source}`}>{story.outlet || story.source}</span>
             )}
             {story.publishedAt && (
               <span className="featured-story-time">{formatRelative(story.publishedAt)}</span>
