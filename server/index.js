@@ -271,23 +271,33 @@ async function fetchHeadlinePool() {
   const rawItems = [].concat(parsed?.rss?.channel?.item || []);
   if (rawItems.length === 0) throw new Error('Google News RSS returned no items');
 
+  // Debug: log first item structure for diagnostics
+  if (rawItems[0]) {
+    console.log('[recommended-story] first RSS item structure:', JSON.stringify(rawItems[0], null, 2).slice(0, 500));
+  }
+
   const POLITICAL_KEYWORDS = /trump|white house|congress|senate|maga|democrat|republican|biden|political/i;
   const JUNK_TITLE_WORDS   = /\bnfl\b|\bnba\b|\bmlb\b|\bmovie\b|\bcelebrity\b|\bsports?\b|\bgame\b|\bscore\b|\bactor\b/i;
 
   const seen = new Set();
   const pool = [];
   for (const item of rawItems) {
-    const title = typeof item.title === 'string' ? item.title
-      : (item.title?.['#text'] || String(item.title || ''));
-    const link = typeof item.link === 'string' ? item.link : '';
-    const pubDate = item.pubDate ? String(item.pubDate) : '';
-    const pubMs = pubDate ? new Date(pubDate).getTime() : 0;
-    const sourceName = typeof item.source === 'string' ? item.source
-      : (item.source?.['#text'] || '');
-    const description = typeof item.description === 'string' ? item.description : '';
-    if (!title || !link || seen.has(link)) continue;
-    seen.add(link);
-    pool.push({ title, link, pubDate, pubMs, sourceName, description });
+    try {
+      const title = typeof item.title === 'string' ? item.title
+        : (item.title?.['#text'] || String(item.title || ''));
+      const link = typeof item.link === 'string' ? item.link : '';
+      const pubDate = item.pubDate ? String(item.pubDate) : '';
+      const pubMs = pubDate ? new Date(pubDate).getTime() : 0;
+      const sourceName = typeof item.source === 'string' ? item.source
+        : (item.source?.['#text'] || '');
+      const description = typeof item.description === 'string' ? item.description : '';
+      if (!title || !link || seen.has(link)) continue;
+      seen.add(link);
+      pool.push({ title, link, pubDate, pubMs, sourceName, description });
+    } catch (itemErr) {
+      console.warn('[recommended-story] skipping malformed RSS item:', itemErr.message);
+      continue;
+    }
   }
 
   // Apply 24h time window then political keyword + junk filter, with graceful
@@ -2182,6 +2192,11 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
     const rawItems = [].concat(parsed?.rss?.channel?.item || []);
     console.log('[find-stories] RSS items:', rawItems.length);
 
+    // Debug: log first item structure for diagnostics
+    if (rawItems[0]) {
+      console.log('[find-stories] first RSS item structure:', JSON.stringify(rawItems[0], null, 2).slice(0, 500));
+    }
+
     if (rawItems.length === 0) {
       return res.status(502).json({ error: 'Google News RSS returned no items' });
     }
@@ -2194,18 +2209,23 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
     const pool = [];
 
     for (const item of rawItems) {
-      const title = typeof item.title === 'string' ? item.title
-        : (item.title?.['#text'] || String(item.title || ''));
-      const link = typeof item.link === 'string' ? item.link : '';
-      const pubDate = item.pubDate ? String(item.pubDate) : '';
-      const pubMs = pubDate ? new Date(pubDate).getTime() : 0;
-      const sourceName = typeof item.source === 'string' ? item.source
-        : (item.source?.['#text'] || '');
-      const description = typeof item.description === 'string' ? item.description : '';
+      try {
+        const title = typeof item.title === 'string' ? item.title
+          : (item.title?.['#text'] || String(item.title || ''));
+        const link = typeof item.link === 'string' ? item.link : '';
+        const pubDate = item.pubDate ? String(item.pubDate) : '';
+        const pubMs = pubDate ? new Date(pubDate).getTime() : 0;
+        const sourceName = typeof item.source === 'string' ? item.source
+          : (item.source?.['#text'] || '');
+        const description = typeof item.description === 'string' ? item.description : '';
 
-      if (!title || !link || seen.has(link)) continue;
-      seen.add(link);
-      pool.push({ title, link, pubDate, pubMs, sourceName, description });
+        if (!title || !link || seen.has(link)) continue;
+        seen.add(link);
+        pool.push({ title, link, pubDate, pubMs, sourceName, description });
+      } catch (itemErr) {
+        console.warn('[find-stories] skipping malformed RSS item:', itemErr.message);
+        continue;
+      }
     }
 
     // Filter by time window — fall back to full pool if too few pass
