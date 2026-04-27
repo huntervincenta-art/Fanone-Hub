@@ -17,10 +17,12 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const { XMLParser } = require('fast-xml-parser');
 const topicPulseRouter = require('./routes/topicPulse');
+const videoScriptRouter = require('./routes/videoScript');
 const { analyzeSubject: tpAnalyzeSubject } = require('./routes/topicPulse');
 const MFS_SYSTEM_PROMPT = require('./mfs-system-prompt');
 const { classifyUrl, extractYouTubeId } = require('./utils/urlType');
 const { fetchTranscript: fetchYouTubeTranscript } = require('./utils/youtubeTranscript');
+const { scoreHeadlineForFanone, fanoneOpportunityBucket, classifyCategory } = require('./utils/fanone-shared');
 
 // Shared HTTPS agent with connection pooling to prevent ENOBUFS from too many open sockets
 const pooledAgent = new https.Agent({
@@ -76,53 +78,72 @@ const RECOMMENDED_STORY_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 let recommendedStoryCache = null; // { data, expiresAt }
 let recommendedStoryInflight = null; // shared promise during cold builds
 
+// ── Approved US publishers (+ BBC as explicit international exception) ────────
+// Edit this list to add/remove publishers. Used for:
+//   1. Outlet badge matching (matchApprovedOutlet)
+//   2. INTERNATIONAL tagging — any source NOT in this list gets an INTERNATIONAL tag
+// BBC is the ONE approved international outlet — no INTERNATIONAL badge.
 const APPROVED_SOURCE_NEEDLES = [
-  { name: 'TIME',            needles: ['time.com', 'time magazine'] },
-  { name: 'Reuters',         needles: ['reuters'] },
-  { name: 'Politico',        needles: ['politico'] },
+  // Major wire services / broadcast networks
   { name: 'AP',              needles: ['apnews', 'associated press', 'ap news'] },
-  { name: 'NPR',             needles: ['npr.org', 'npr'] },
-  { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'] },
-  { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'] },
-  { name: 'Washington Post', needles: ['washingtonpost', 'washington post'] },
-  { name: 'CNN',             needles: ['cnn.com', 'cnn'] },
+  { name: 'Reuters',         needles: ['reuters'] },
   { name: 'NBC News',        needles: ['nbcnews', 'nbc news'] },
   { name: 'CBS News',        needles: ['cbsnews', 'cbs news'] },
   { name: 'ABC News',        needles: ['abcnews.go.com', 'abcnews', 'abc news'] },
-  { name: 'The Guardian',    needles: ['theguardian', 'the guardian', 'guardian'] },
-  { name: 'The Hill',        needles: ['thehill.com', 'thehill', 'the hill'] },
-  { name: 'ProPublica',      needles: ['propublica'] },
-  { name: 'The Atlantic',    needles: ['theatlantic', 'the atlantic', 'atlantic'] },
-  { name: 'Bloomberg',       needles: ['bloomberg'] },
-  { name: 'Axios',           needles: ['axios'] },
-  { name: 'BBC',             needles: ['bbc.com', 'bbc.co.uk', 'bbc'] },
-  { name: 'PBS',             needles: ['pbs.org', 'pbs'] },
+  { name: 'CNN',             needles: ['cnn.com', 'cnn'] },
   { name: 'MSNBC',           needles: ['msnbc'] },
-  { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'] },
-  { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'] },
-  { name: 'USA Today',       needles: ['usatoday', 'usa today'] },
-  { name: 'The New Yorker',  needles: ['newyorker', 'new yorker'] },
-  { name: 'Vox',             needles: ['vox.com', 'vox'] },
-  { name: 'Slate',           needles: ['slate.com', 'slate'] },
-  { name: 'Mother Jones',    needles: ['motherjones', 'mother jones'] },
-  { name: 'The Nation',      needles: ['thenation', 'the nation'] },
-  { name: 'HuffPost',        needles: ['huffpost', 'huffington'] },
-  { name: 'Al Jazeera',      needles: ['aljazeera', 'al jazeera'] },
-  { name: 'Foreign Policy',  needles: ['foreignpolicy', 'foreign policy'] },
-  { name: 'The Economist',   needles: ['economist.com', 'the economist'] },
-  { name: 'Newsweek',        needles: ['newsweek'] },
+  { name: 'Fox News',        needles: ['foxnews', 'fox news'] },
+  { name: 'NPR',             needles: ['npr.org', 'npr'] },
+  { name: 'PBS',             needles: ['pbs.org', 'pbs'] },
+  // Major US newspapers
+  { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'] },
+  { name: 'Washington Post', needles: ['washingtonpost', 'washington post'] },
   { name: 'The Wall Street Journal', needles: ['wsj.com', 'wsj', 'wall street journal'] },
+  { name: 'USA Today',       needles: ['usatoday', 'usa today'] },
+  { name: 'LA Times',        needles: ['latimes', 'los angeles times', 'la times'] },
+  // Political / policy outlets
+  { name: 'Politico',        needles: ['politico'] },
+  { name: 'The Hill',        needles: ['thehill.com', 'thehill', 'the hill'] },
+  { name: 'Axios',           needles: ['axios'] },
+  { name: 'Bloomberg',       needles: ['bloomberg'] },
+  { name: 'Newsweek',        needles: ['newsweek'] },
+  { name: 'TIME',            needles: ['time.com', 'time magazine'] },
+  // Magazines / longform
+  { name: 'The Atlantic',    needles: ['theatlantic', 'the atlantic', 'atlantic'] },
+  { name: 'The New Yorker',  needles: ['newyorker', 'new yorker'] },
+  { name: 'Mother Jones',    needles: ['motherjones', 'mother jones'] },
+  { name: 'Vox',             needles: ['vox.com', 'vox'] },
+  { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'] },
+  { name: 'HuffPost',        needles: ['huffpost', 'huffington'] },
+  { name: 'ProPublica',      needles: ['propublica'] },
+  { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'] },
+  { name: 'Slate',           needles: ['slate.com', 'slate'] },
+  { name: 'Rolling Stone',   needles: ['rollingstone', 'rolling stone'] },
+  { name: 'Salon',           needles: ['salon.com'] },
+  { name: 'The Nation',      needles: ['thenation', 'the nation'] },
+  // Progressive / partisan (still legitimate news)
+  { name: 'Talking Points Memo', needles: ['talkingpointsmemo', 'talking points memo', 'tpm'] },
+  { name: 'Raw Story',       needles: ['rawstory', 'raw story'] },
+  { name: 'Mediaite',        needles: ['mediaite'] },
+  { name: 'Daily Kos',       needles: ['dailykos', 'daily kos'] },
+  // Business / financial
+  { name: 'CNBC',            needles: ['cnbc.com', 'cnbc'] },
   { name: 'MarketWatch',     needles: ['marketwatch'] },
   { name: 'Business Insider', needles: ['businessinsider', 'business insider'] },
-  { name: 'CNBC',            needles: ['cnbc.com', 'cnbc'] },
-  { name: 'Salon',           needles: ['salon.com'] },
-  { name: 'Raw Story',       needles: ['rawstory', 'raw story'] },
-  { name: 'Rolling Stone',   needles: ['rollingstone', 'rolling stone'] },
-  { name: 'Vice News',       needles: ['vice.com', 'vice news'] },
+  // Legal / niche
+  { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'] },
+  { name: 'Foreign Policy',  needles: ['foreignpolicy', 'foreign policy'] },
+  // Military / law enforcement
   { name: 'Stars and Stripes', needles: ['stripes.com', 'stars and stripes'] },
   { name: 'Military Times',  needles: ['militarytimes', 'military times'] },
   { name: 'The Marshall Project', needles: ['themarshallproject', 'marshall project'] },
+  // Approved international exception — BBC gets no INTERNATIONAL badge
+  { name: 'BBC',             needles: ['bbc.com', 'bbc.co.uk', 'bbc'], international: false },
 ];
+
+// Names of outlets in APPROVED_SOURCE_NEEDLES that are international but approved.
+// These do NOT get an INTERNATIONAL badge even though they aren't US-based.
+const APPROVED_INTERNATIONAL_OUTLETS = new Set(['BBC']);
 
 // Tabloid / gossip sources to block — filter these OUT of results
 const TABLOID_BLOCKLIST = [
@@ -232,170 +253,8 @@ function opportunityBucket(saturationScore) {
 //
 // The score is "how good is this story for MFS to cover", not "how uncovered".
 
-const FANONE_HIGH_KEYWORDS = [
-  // Government corruption & accountability (HIGH lane)
-  'corruption', 'corrupt', 'bribe', 'bribery', 'kickback', 'pay-to-play',
-  'whistleblower', 'leak', 'leaked', 'cover up', 'cover-up', 'coverup',
-  'oversight', 'accountability', 'abuse of power', 'misconduct',
-  'inspector general', 'ethics violation', 'conflict of interest',
-  // Law enforcement / policing / criminal justice (HIGH lane)
-  'police', 'cop ', 'cops', 'law enforcement', 'sheriff', 'officer', 'officers',
-  'doj', 'justice department', 'fbi', 'attorney general', 'prosecutor',
-  'indict', 'indicted', 'indictment', 'charges', 'sentenc',
-  'prison', 'incarcerat', 'bail reform', 'policing', 'use of force',
-  'body cam', 'bodycam', 'internal affairs', 'police reform',
-  // Constitutional law / rule of law (HIGH lane)
-  'court', 'judge', 'judges', 'ruling', 'supreme court', 'scotus',
-  'constitution', 'unconstitutional', 'first amendment', 'fourth amendment',
-  'due process', 'civil rights', 'voting rights', 'rule of law',
-  'democracy', 'authoritarian', 'autocrat', 'dictator', 'fascis',
-  'pardon', 'commutation', 'martial law', 'emergency powers',
-  // FBI / ATF / DEA / federal law enforcement (HIGH lane)
-  'fbi', 'atf', 'dea', 'task force', 'federal agent', 'undercover',
-  'narcotics', 'drug trafficking', 'trafficking', 'cartel',
-  // Missed angles / underreported (HIGH lane — boost signals)
-  'buried', 'underreported', 'overlooked', 'nobody is talking about',
-  'quietly', 'slipped through', 'under the radar',
-  // Immigration enforcement
-  'ice ', 'i.c.e.', 'deport', 'detain', 'detention', 'border patrol',
-  'immigration enforcement', 'raid',
-];
-
-const FANONE_MEDIUM_KEYWORDS = [
-  // Political extremism (MEDIUM lane)
-  'extremis', 'radical', 'militia', 'proud boys', 'oath keeper',
-  'domestic terror', 'white nationalist', 'white supremac',
-  'capitol', 'january 6', 'jan. 6', 'jan 6',
-  // Foreign affairs / national security (MEDIUM lane)
-  'national security', 'foreign policy', 'intelligence', 'cia', 'nsa',
-  'sanctions', 'nato', 'ally', 'allies', 'diplomacy', 'diplomat',
-  'pentagon', 'military', 'troops', 'veteran', 'veterans', 'service member',
-  // Financial crimes / fraud (MEDIUM lane)
-  'fraud', 'embezzl', 'money laundering', 'ponzi', 'wire fraud',
-  'tax evasion', 'financial crime', 'securities fraud',
-  // General political (MEDIUM)
-  'trump administration', 'white house', 'congress', 'senate', 'house of representatives',
-  'policy', 'legislation', 'bill', 'vote', 'hearing', 'subpoena',
-  'federal agency', 'agency', 'cabinet', 'secretary',
-  'government spending', 'budget', 'funding cut', 'shutdown',
-  'executive order', 'directive', 'memo',
-];
-
-const FANONE_LOW_KEYWORDS = [
-  // Generic partisan commentary with no unique angle (LOW — deprioritize)
-  'slams', 'blasts', 'claps back', 'destroys', 'owned',
-  'hot take', 'opinion poll', 'approval rating',
-  'gop', 'maga', 'democrat', 'republican',
-  // Celebrity / entertainment / sports
-  'celebrity', 'oscars', 'grammy', 'hollywood',
-  'kardashian', 'taylor swift', 'kanye',
-  'nfl', 'nba', 'mlb', 'soccer', 'olympic',
-  'box office', 'movie', 'tv show', 'streaming series',
-  'earnings', 'stock split', 'ipo', 'product launch', 'iphone', 'gadget',
-  'recipe', 'lifestyle', 'fashion', 'red carpet',
-];
-
-const FANONE_IMPACT_KEYWORDS = [
-  'killed', 'died', 'death', 'dying', 'fatal',
-  'family', 'families', 'children', 'kids', 'mother', 'father',
-  'fired', 'forced out', 'resign',
-  'crisis', 'scandal', 'cover up', 'cover-up',
-  'arrested', 'detained', 'raid',
-  'overturned', 'blocked', 'struck down', 'guilty', 'convicted',
-];
-
-// Keywords that signal a story is time-sensitive (BREAKING vs EVERGREEN)
-const BREAKING_KEYWORDS = [
-  'breaking', 'just in', 'developing', 'happening now',
-  'arrested today', 'just arrested', 'just indicted', 'just ruled',
-  'emergency', 'shooting', 'active', 'unfolding',
-  'hours ago', 'minutes ago', 'just announced',
-];
-
-function scoreHeadlineForFanone(article) {
-  const headline = String(article.headline || '').toLowerCase();
-  const description = String(article.description || '').toLowerCase();
-  const text = `${headline} ${headline} ${description}`; // headline weighted 2x
-
-  let score = 50;
-  const matched = { high: [], medium: [], low: [], impact: [] };
-
-  // HIGH relevance: +12 each, capped at +40
-  let highBonus = 0;
-  for (const kw of FANONE_HIGH_KEYWORDS) {
-    if (text.includes(kw)) {
-      highBonus += 12;
-      matched.high.push(kw.trim());
-    }
-  }
-  score += Math.min(highBonus, 40);
-
-  // MEDIUM relevance: +5 each, capped at +15
-  let medBonus = 0;
-  for (const kw of FANONE_MEDIUM_KEYWORDS) {
-    if (text.includes(kw)) {
-      medBonus += 5;
-      matched.medium.push(kw.trim());
-    }
-  }
-  score += Math.min(medBonus, 15);
-
-  // LOW relevance: -8 each (no cap, can sink the score hard)
-  for (const kw of FANONE_LOW_KEYWORDS) {
-    if (text.includes(kw)) {
-      score -= 8;
-      matched.low.push(kw.trim());
-    }
-  }
-
-  // Impact bonus: +5 each, capped at +10
-  let impactBonus = 0;
-  for (const kw of FANONE_IMPACT_KEYWORDS) {
-    if (text.includes(kw)) {
-      impactBonus += 5;
-      matched.impact.push(kw.trim());
-    }
-  }
-  score += Math.min(impactBonus, 10);
-
-  // Recency bonus: <6h +10, 6–12h +5, 12–24h 0, >24h -10
-  const pubMs = article.publishedAt ? new Date(article.publishedAt).getTime() : 0;
-  let ageHours = Infinity;
-  if (pubMs) {
-    ageHours = (Date.now() - pubMs) / (1000 * 60 * 60);
-    if (ageHours <= 6) score += 10;
-    else if (ageHours <= 12) score += 5;
-    else if (ageHours > 24) score -= 10;
-  }
-
-  // Clamp to 0–100
-  score = Math.max(0, Math.min(100, Math.round(score)));
-
-  // Urgency classification: BREAKING vs EVERGREEN
-  // Default to EVERGREEN — Fanone does commentary, not breaking news
-  let urgency = 'EVERGREEN';
-  const breakingMatches = BREAKING_KEYWORDS.filter(kw => text.includes(kw));
-  if (breakingMatches.length >= 2 && ageHours <= 6) {
-    urgency = 'BREAKING';
-  } else if (breakingMatches.length >= 1 && ageHours <= 3) {
-    urgency = 'BREAKING';
-  }
-
-  return { score, matched, urgency };
-}
-
-function fanoneOpportunityBucket(score) {
-  if (score == null || isNaN(score)) {
-    return { level: 'unknown', label: 'Unknown', color: '#9ca3af' };
-  }
-  if (score >= 70) {
-    return { level: 'high', label: "Strong pick — right in Fanone's lane", color: '#22c55e' };
-  }
-  if (score >= 40) {
-    return { level: 'moderate', label: 'Solid option — needs a sharp angle', color: '#fbbf24' };
-  }
-  return { level: 'low', label: 'Off-lane — but could work with the right framing', color: '#c41e3a' };
-}
+// Fanone scoring logic imported from ./utils/fanone-shared.js
+// scoreHeadlineForFanone, fanoneOpportunityBucket, keyword arrays
 
 // Self-contained headline fetcher — independent of /api/find-stories cache.
 // Pulls Google News RSS, applies the same political-keyword + junk filter as
@@ -447,7 +306,7 @@ async function fetchHeadlinePool() {
 
   filteredPool.sort((a, b) => (b.pubMs || 0) - (a.pubMs || 0));
 
-  return filteredPool.slice(0, 30).map(a => ({
+  return filteredPool.slice(0, 40).map(a => ({
     headline:    a.title,
     url:         a.link,
     source:      a.sourceName,
@@ -584,6 +443,8 @@ const scriptSchema = new mongoose.Schema({
   generatedScript:  { type: String, required: true },
   previousVersion:  { type: String, default: '' },
   generatedBy:      { type: String, default: '' },
+  inputType:        { type: String, enum: ['article', 'video', 'topic', 'url'], default: 'article' },
+  sourceUrl:        { type: String, default: '' },
   createdAt:        { type: String, default: () => new Date().toISOString() },
   updatedAt:        { type: String, default: '' },
 }, { versionKey: false, collection: 'scripts' });
@@ -1325,9 +1186,9 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
       });
 
       const scored = tagged.map(article => {
-        const { score: baseScore, matched, urgency } = scoreHeadlineForFanone(article);
+        const { score: baseScore, matched, urgency, category } = scoreHeadlineForFanone(article);
         const finalScore = Math.max(0, Math.min(100, baseScore + (article.outlet ? 5 : 0)));
-        return { article, score: finalScore, matched, urgency };
+        return { article, score: finalScore, matched, urgency, category };
       });
 
       scored.sort((a, b) => b.score - a.score);
@@ -1360,6 +1221,7 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
           score:      pick.score,
           matched:    pick.matched,
           urgency:    pick.urgency,
+          category:   pick.category || 'Political Commentary',
           opportunity,
           lifecycle:  opportunity.level === 'high' ? 'Rising'
                     : opportunity.level === 'moderate' ? 'Peak'
@@ -1374,6 +1236,7 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
         score:      pick.score,
         matched:    pick.matched,
         urgency:    pick.urgency,
+        category:   pick.category || 'Political Commentary',
         opportunity: pick.opportunity,
         analysis: {
           saturation_score: 100 - pick.score,
@@ -1921,6 +1784,7 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
         angleNotes:      angleNotes || '',
         generatedScript: script,
         generatedBy:    user || '',
+        inputType:      'article',
       }).save();
       savedId = saved._id;
     } catch (saveErr) {
@@ -2040,6 +1904,8 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
         angleNotes:      angleNotes || '',
         generatedScript: script,
         generatedBy:     user || '',
+        inputType:      urlType === 'youtube' ? 'video' : 'url',
+        sourceUrl:      url || '',
       }).save();
       savedId = saved._id;
     } catch (saveErr) {
@@ -2053,13 +1919,102 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
   }
 });
 
-// GET /api/scripts — list all saved scripts, newest first
+// POST /api/fanone-hub/topic-script — generate MFS script from a plain topic/angle
+app.post('/api/fanone-hub/topic-script', requireAuth, async (req, res) => {
+  const { topic = '', user = '' } = req.body || {};
+  if (!topic.trim()) return res.status(400).json({ error: 'topic is required' });
+  if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured' });
+
+  try {
+    const todayStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const userMessage =
+      `Today's date is ${todayStr}. Generate a full MFS script package from this topic or angle:\n\n` +
+      `Topic: ${topic}\n\n` +
+      `Research this topic thoroughly and produce a script. If the topic is vague, pick the most newsworthy, ` +
+      `Fanone-relevant angle you can find. Do NOT make up facts — flag anything unverifiable with [VERIFY].`;
+
+    const anthropicRes = await httpsRequest(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        timeout: 120000,
+      },
+      {
+        model: 'claude-opus-4-7-20250422',
+        max_tokens: 16000,
+        system: MFS_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      }
+    );
+
+    if (anthropicRes.status !== 200) {
+      const errBody = anthropicRes.body || {};
+      const errMsg = (errBody.error && errBody.error.message) || JSON.stringify(errBody);
+      console.error('[topic-script] Anthropic error | status:', anthropicRes.status);
+      return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
+    }
+
+    const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
+
+    let savedId = null;
+    try {
+      const saved = await new Script({
+        articleTitle:    topic,
+        articleSource:   'Topic',
+        generatedScript: script,
+        generatedBy:     user || '',
+        inputType:       'topic',
+      }).save();
+      savedId = saved._id;
+    } catch (saveErr) {
+      console.error('[topic-script] failed to persist script:', saveErr.message);
+    }
+
+    res.json({ script, id: savedId });
+  } catch (err) {
+    console.error('POST /api/fanone-hub/topic-script error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/scripts — list saved scripts, newest first, with optional pagination
 app.get('/api/scripts', requireAuth, async (req, res) => {
   try {
-    const scripts = await Script.find({}).sort({ createdAt: -1 }).lean();
-    res.json(scripts.map(s => { s.id = s._id; delete s._id; return s; }));
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const skip = (page - 1) * limit;
+    const [scripts, total] = await Promise.all([
+      Script.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Script.countDocuments({}),
+    ]);
+    res.json({
+      scripts: scripts.map(s => { s.id = s._id; delete s._id; return s; }),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
   } catch (err) {
     console.error('GET /api/scripts error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/scripts/:id — single script for viewer
+app.get('/api/scripts/:id', requireAuth, async (req, res) => {
+  try {
+    const script = await Script.findById(req.params.id).lean();
+    if (!script) return res.status(404).json({ error: 'Script not found' });
+    script.id = script._id;
+    delete script._id;
+    res.json(script);
+  } catch (err) {
+    console.error('GET /api/scripts/:id error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2233,11 +2188,18 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
       : keywordFiltered.length >= 3 ? keywordFiltered : workingPool;
 
     filteredPool.sort((a, b) => (b.pubMs || 0) - (a.pubMs || 0));
-    const articles = filteredPool.slice(0, 15);
+    const articles = filteredPool.slice(0, 20);
 
     console.log('[find-stories] pool:', pool.length, '| timeFiltered:', timeFiltered.length, '| after junk filter:', filteredPool.length, '| enriching:', articles.length, '| freshest:', articles[0]?.pubDate || 'none');
 
     const enriched = await Promise.all(articles.map(async (article) => {
+      // Outlet matching + INTERNATIONAL tagging
+      const outlet = matchApprovedOutlet({ url: article.link, source: article.sourceName, sourceName: article.sourceName });
+      // If outlet is recognized, it's approved (incl BBC). If not, tag as INTERNATIONAL.
+      const isInternational = !outlet;
+      // Category from scoring
+      const category = classifyCategory(`${article.title} ${article.description || ''}`);
+
       try {
         const anthropicRes = await httpsRequest(
           'https://api.anthropic.com/v1/messages',
@@ -2283,8 +2245,11 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
           id: article.link || article.title,
           headline: article.title,
           source: article.sourceName,
+          outlet: outlet || null,
           url: article.link,
           publishedAt: article.pubDate,
+          category,
+          isInternational,
           angle,
           titles,
         };
@@ -2294,8 +2259,11 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
           id: article.link || article.title,
           headline: article.title,
           source: article.sourceName,
+          outlet: outlet || null,
           url: article.link,
           publishedAt: article.pubDate,
+          category,
+          isInternational,
           angle: `Enrichment error: ${enrichErr.message}`,
           titles: [],
         };
@@ -2345,6 +2313,7 @@ app.delete('/api/list/:id', requireAuth, async (req, res) => {
 
 // ── Topic Pulse ───────────────────────────────────────────────────────────────
 app.use('/api/topic-pulse', requireAuth, topicPulseRouter);
+app.use('/api/fanone-hub', requireAuth, videoScriptRouter);
 
 // ── ntfy deep-link redirects ─────────────────────────────────────────────────
 // ntfy on iOS strips query parameters, so we use path-based redirects instead.

@@ -64,7 +64,13 @@ If the output is approaching the token limit and the script is not yet at 3,500 
 Include 4-6 clip/visual placeholders inline like [CLIP: relevant testimony] or [B-ROLL: relevant footage] or [GRAPHIC: data point visualization]. B-ROLL suggestions must be relevant to the ACTUAL story topic. Do NOT suggest January 6th footage unless the script is specifically about January 6th.
 
 CONTENT TYPE TAGGING:
-At the very top of your output, include one of these tags:
+At the very top of your output, include BOTH of these tags:
+
+Category (pick one):
+[CATEGORY: LAW ENFORCEMENT] — Any story involving police, crime, DOJ, FBI, federal/state/local law enforcement, courts, prosecutions, civil rights cases, Jan 6 defendants, police accountability, body cam footage, qualified immunity, organized crime, mass shootings, federal investigations, prison/corrections
+[CATEGORY: POLITICAL COMMENTARY] — Politics, elections, policy, Congress, White House, partisan analysis, op-eds, political interviews, campaign news, foreign policy, government spending, legislation
+
+Urgency (pick one):
 [URGENCY: BREAKING] — Only if the story is genuinely time-sensitive and will lose relevance within 24-48 hours
 [URGENCY: EVERGREEN] — Default. The story will still be relevant in a week or more. Fanone does NOT do breaking news — he does unique commentary. Default to EVERGREEN unless the story is genuinely time-critical (active legal proceedings with imminent deadlines, developing crisis, breaking scandal with new developments hourly).
 
@@ -76,6 +82,7 @@ YOUTUBE PACKAGING:
 OUTPUT FORMAT:
 Always output in this exact format:
 
+[CATEGORY: LAW ENFORCEMENT or POLITICAL COMMENTARY]
 [URGENCY: BREAKING or EVERGREEN]
 
 # YOUTUBE TITLE

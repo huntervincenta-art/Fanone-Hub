@@ -182,6 +182,9 @@ export default function FindStories({ passphrase, userName }) {
   // Tab
   const [findTab, setFindTab] = useState('articles');
 
+  // Category filter
+  const [catFilter, setCatFilter] = useState('All');
+
   // ── Article fetch (unchanged) ────────────────────────
   const fetchArticles = async (win = window) => {
     setLoading(true);
@@ -498,22 +501,50 @@ export default function FindStories({ passphrase, userName }) {
             </div>
           )}
 
+          {articles.length > 0 && (
+            <div className="urgency-filter-bar" style={{ marginBottom: '0.75rem' }}>
+              {['All', 'Law Enforcement', 'Political Commentary'].map(f => (
+                <button
+                  key={f}
+                  className={`urgency-filter-btn${catFilter === f ? ' urgency-filter-btn--active' : ''}`}
+                  onClick={() => setCatFilter(f)}
+                  type="button"
+                >
+                  {f === 'Law Enforcement' ? 'LE' : f === 'Political Commentary' ? 'PC' : f}
+                  {f !== 'All' && (
+                    <span style={{ marginLeft: 4, opacity: 0.7 }}>
+                      ({articles.filter(a => a.category === f).length})
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
           {loading && articles.length === 0 ? (
             <div className="find-stories-empty">Fetching latest political news and generating angles…</div>
           ) : articles.length === 0 && !loading ? (
             <div className="find-stories-empty">No articles from approved outlets found. Try refreshing or switching to Last 24h.</div>
           ) : (
             <div className="article-grid">
-              {articles.map(article => {
+              {(catFilter === 'All' ? articles : articles.filter(a => a.category === catFilter)).map(article => {
                 const status = actionStatus[article.id];
                 const done = status === 'added' || status === 'claimed';
                 return (
                   <div className={`article-card${done ? ' article-card--done' : ''}`} key={article.id}>
                     <div className="article-card-meta">
+                      {article.category && (
+                        <span className={`story-card-category story-card-category--${article.category === 'Law Enforcement' ? 'le' : 'pc'}`}>
+                          {article.category === 'Law Enforcement' ? 'LE' : 'PC'}
+                        </span>
+                      )}
                       {(article.outlet || article.source) && (
                         <span className="article-source article-outlet-badge">
                           {article.outlet || article.source}
                         </span>
+                      )}
+                      {article.isInternational && (
+                        <span className="article-international-badge">INTERNATIONAL</span>
                       )}
                       {article.publishedAt && (
                         <span

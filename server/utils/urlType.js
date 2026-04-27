@@ -21,11 +21,29 @@ function classifyUrl(url) {
 }
 
 function extractYouTubeId(url) {
+  if (!url) return null;
+  const trimmed = url.trim();
+
+  // Raw 11-char video ID (no URL structure)
+  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) return trimmed;
+
   try {
-    const u = new URL(url);
+    const u = new URL(trimmed);
     const host = u.hostname.toLowerCase();
+
+    // youtu.be/VIDEO_ID
     if (host === 'youtu.be') return u.pathname.slice(1).split('/')[0] || null;
-    if (YOUTUBE_HOSTS.includes(host)) return u.searchParams.get('v') || null;
+
+    if (YOUTUBE_HOSTS.includes(host)) {
+      // /watch?v=VIDEO_ID
+      const v = u.searchParams.get('v');
+      if (v) return v;
+
+      // /shorts/VIDEO_ID, /embed/VIDEO_ID, /live/VIDEO_ID, /v/VIDEO_ID
+      const pathMatch = u.pathname.match(/^\/(shorts|embed|live|v)\/([A-Za-z0-9_-]{11})/);
+      if (pathMatch) return pathMatch[2];
+    }
+
     return null;
   } catch {
     return null;

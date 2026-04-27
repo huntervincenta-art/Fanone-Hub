@@ -11,7 +11,6 @@ import Notifications from './components/Notifications';
 import ListPage from './components/ListPage';
 import TopicPulse from './pages/TopicPulse';
 import ScriptResult from './pages/ScriptResult';
-import Scripts from './pages/Scripts';
 import Dashboard from './pages/Dashboard';
 import './App.css';
 
@@ -313,10 +312,10 @@ export default function App() {
           </Link>
           <span className="app-nav-divider" aria-hidden="true" />
           <Link
-            className={`app-nav-link app-nav-link--secondary${isActive('/scripts') ? ' app-nav-link--active' : ''}`}
-            to="/scripts"
+            className={`app-nav-link app-nav-link--secondary${isActive('/topic-pulse') ? ' app-nav-link--active' : ''}`}
+            to="/topic-pulse"
           >
-            Scripts
+            Topic Pulse
           </Link>
           <Link
             className={`app-nav-link app-nav-link--secondary${isActive('/list') ? ' app-nav-link--active' : ''}`}
@@ -393,7 +392,7 @@ export default function App() {
               <Link className={`mobile-nav-link${isActive('/') ? ' mobile-nav-link--active' : ''}`} to="/">Dashboard</Link>
               <Link className={`mobile-nav-link${isActive('/stories') ? ' mobile-nav-link--active' : ''}`} to="/stories">Stories</Link>
               <Link className={`mobile-nav-link${isActive('/find-stories') ? ' mobile-nav-link--active' : ''}`} to="/find-stories">Find Stories</Link>
-              <Link className={`mobile-nav-link${isActive('/scripts') ? ' mobile-nav-link--active' : ''}`} to="/scripts">Scripts</Link>
+              <Link className={`mobile-nav-link${isActive('/topic-pulse') ? ' mobile-nav-link--active' : ''}`} to="/topic-pulse">Topic Pulse</Link>
               <Link className={`mobile-nav-link${isActive('/list') ? ' mobile-nav-link--active' : ''}`} to="/list">List</Link>
               <Link className={`mobile-nav-link${isActive('/notifications') ? ' mobile-nav-link--active' : ''}`} to="/notifications">Alerts</Link>
             </nav>
@@ -449,12 +448,9 @@ export default function App() {
             </section>
           } />
           <Route path="/topic-pulse" element={
-            <section className="section">
-              <TopicPulse passphrase={passphrase} userName={userName} />
-            </section>
+            <TopicPulse passphrase={passphrase} userName={userName} />
           } />
           <Route path="/script-result" element={<ScriptResult />} />
-          <Route path="/scripts" element={<Scripts passphrase={passphrase} />} />
         </Routes>
       </main>
 

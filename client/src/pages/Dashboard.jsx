@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import TitleTool from '../components/TitleTool';
-import TopicPulse from './TopicPulse';
+import OpportunityDonut from '../components/OpportunityDonut';
 
 
 function formatDate(iso) {
@@ -115,64 +115,7 @@ function ChannelStatsCard({ passphrase }) {
   );
 }
 
-// Donut/circular gauge — Fanone-lane relevance score (0–100)
-function OpportunityDonut({ score, color, label, gaugeLabel = 'LANE FIT' }) {
-  const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
-  const size = 110;
-  const stroke = 12;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const dash = (safeScore / 100) * circumference;
-  return (
-    <div className="opp-donut" role="img" aria-label={`${label} — ${safeScore} of 100`}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth={stroke}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${circumference - dash}`}
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: 'stroke-dasharray 0.6s ease' }}
-        />
-        <text
-          x="50%"
-          y="48%"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fill="#ffffff"
-          fontSize="22"
-          fontWeight="800"
-        >
-          {safeScore}
-        </text>
-        <text
-          x="50%"
-          y="68%"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fill="rgba(255,255,255,0.55)"
-          fontSize="9"
-          fontWeight="700"
-          letterSpacing="1.2"
-        >
-          {gaugeLabel}
-        </text>
-      </svg>
-    </div>
-  );
-}
+// OpportunityDonut imported from ../components/OpportunityDonut
 
 // Saturation gauge — how covered is the top story on YouTube
 function SaturationGauge({ saturationScore }) {
@@ -210,7 +153,7 @@ function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
 
   const filtered = filter === 'All'
     ? suggestions
-    : suggestions.filter(s => s.urgency === filter.toUpperCase());
+    : suggestions.filter(s => s.category === filter);
 
   const handleGenerateScript = async (story, opp) => {
     const id = story.id;
@@ -250,7 +193,7 @@ function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
   return (
     <div className="story-carousel-wrap">
       <div className="urgency-filter-bar">
-        {['All', 'Breaking', 'Evergreen'].map(f => (
+        {['All', 'Law Enforcement', 'Political Commentary'].map(f => (
           <button
             key={f}
             className={`urgency-filter-btn${filter === f ? ' urgency-filter-btn--active' : ''}`}
@@ -260,7 +203,7 @@ function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
             {f}
             {f !== 'All' && (
               <span style={{ marginLeft: 4, opacity: 0.7 }}>
-                ({suggestions.filter(s => s.urgency === f.toUpperCase()).length})
+                ({suggestions.filter(s => s.category === f).length})
               </span>
             )}
           </button>
@@ -278,8 +221,8 @@ function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
             return (
               <div className="story-card" key={story.id || i}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span className={`story-card-urgency story-card-urgency--${item.urgency}`}>
-                    {item.urgency}
+                  <span className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}>
+                    {item.category === 'Law Enforcement' ? 'Law Enforcement' : 'Political Commentary'}
                   </span>
                   <div className="story-card-score">
                     <span
@@ -383,8 +326,8 @@ function FeaturedStoryCard({ item, passphrase, userName }) {
   return (
     <div className="featured-story">
       <div className="featured-story-top">
-        <span className={`story-card-urgency story-card-urgency--${item.urgency}`}>
-          {item.urgency}
+        <span className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}>
+          {item.category === 'Law Enforcement' ? 'Law Enforcement' : 'Political Commentary'}
         </span>
         <span className="featured-story-rank">TOP PICK</span>
       </div>
@@ -537,8 +480,9 @@ function RecentScriptsCompact({ passphrase }) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to load scripts');
       }
-      const all = await res.json();
-      setScripts(all.slice(0, 5));
+      const data = await res.json();
+      const all = data.scripts || data;
+      setScripts(Array.isArray(all) ? all.slice(0, 5) : []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -564,7 +508,7 @@ function RecentScriptsCompact({ passphrase }) {
         <ul className="recent-scripts-list">
           {scripts.map(s => (
             <li key={s.id} className="recent-scripts-item">
-              <Link to="/scripts" className="recent-scripts-link">
+              <Link to="/topic-pulse" className="recent-scripts-link">
                 <div className="recent-scripts-title">{s.articleTitle || '(Untitled)'}</div>
                 <div className="recent-scripts-meta">
                   <span>{formatDate(s.createdAt)}</span>
@@ -576,7 +520,7 @@ function RecentScriptsCompact({ passphrase }) {
         </ul>
       )}
       <div className="dash-card-footer">
-        <Link to="/scripts" className="dashboard-link-muted">View all →</Link>
+        <Link to="/topic-pulse" className="dashboard-link-muted">View all scripts →</Link>
       </div>
     </div>
   );
@@ -600,16 +544,6 @@ export default function Dashboard({ passphrase, userName }) {
           <TitleTool passphrase={passphrase} userName={userName} />
         </div>
         <RecentScriptsCompact passphrase={passphrase} />
-      </div>
-
-      {/* Row 4 — Topic Pulse */}
-      <div className="dashboard-grid">
-        <div className="dash-card dash-card--pulse">
-          <div className="dash-card-head">
-            <span className="dash-card-label">Topic Pulse</span>
-          </div>
-          <TopicPulse passphrase={passphrase} />
-        </div>
       </div>
     </div>
   );
