@@ -23,6 +23,7 @@ const MFS_SYSTEM_PROMPT = require('./mfs-system-prompt');
 const { classifyUrl, extractYouTubeId } = require('./utils/urlType');
 const { fetchTranscript: fetchYouTubeTranscript } = require('./utils/youtubeTranscript');
 const { scoreHeadlineForFanone, fanoneOpportunityBucket, classifyCategory } = require('./utils/fanone-shared');
+const { GOOGLE_NEWS_HEADERS } = require('./utils/news-headers');
 
 // Shared HTTPS agent with connection pooling to prevent ENOBUFS from too many open sockets
 const pooledAgent = new https.Agent({
@@ -261,7 +262,7 @@ function opportunityBucket(saturationScore) {
 // find-stories, returns a normalized array of { headline, url, source, publishedAt }.
 async function fetchHeadlinePool() {
   const rssUrl = 'https://news.google.com/rss/search?q=Trump+OR+Democrats+OR+Republicans+OR+Congress+OR+MAGA&hl=en-US&gl=US&ceid=US:en';
-  const rssRes = await httpsRequest(rssUrl, { headers: { 'User-Agent': 'Mozilla/5.0 TeamHub/1.0' } });
+  const rssRes = await fetchGoogleNewsRss(rssUrl, 'recommended-story');
   if (rssRes.status !== 200 || typeof rssRes.body !== 'string') {
     throw new Error(`Google News RSS fetch failed (status ${rssRes.status})`);
   }
@@ -572,6 +573,40 @@ function httpsRequest(url, options = {}, body = null) {
     if (bodyStr) req.write(bodyStr);
     req.end();
   });
+}
+
+// ── Resilient Google News RSS fetcher ─────────────────────────────────────────
+// 10s timeout, one retry on 503/429/timeout, logs status + first 200 chars on failure.
+async function fetchGoogleNewsRss(rssUrl, label = 'rss') {
+  const opts = { headers: GOOGLE_NEWS_HEADERS, timeout: 10000 };
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await httpsRequest(rssUrl, opts);
+      if (res.status === 200 && typeof res.body === 'string') {
+        return res;
+      }
+      // Retryable status codes
+      if ((res.status === 503 || res.status === 429) && attempt === 1) {
+        const preview = typeof res.body === 'string' ? res.body.slice(0, 200) : JSON.stringify(res.body).slice(0, 200);
+        console.warn(`[${label}] RSS attempt ${attempt} got ${res.status}, retrying in 2s… | body preview: ${preview}`);
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      // Non-retryable or second attempt
+      const preview = typeof res.body === 'string' ? res.body.slice(0, 200) : JSON.stringify(res.body).slice(0, 200);
+      console.error(`[${label}] RSS fetch failed | status: ${res.status} | body preview: ${preview}`);
+      return res;
+    } catch (err) {
+      if (attempt === 1) {
+        console.warn(`[${label}] RSS attempt ${attempt} error: ${err.message}, retrying in 2s…`);
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      console.error(`[${label}] RSS fetch failed after retry | error: ${err.message}`);
+      throw err;
+    }
+  }
 }
 
 // ── ntfy helper ───────────────────────────────────────────────────────────────
@@ -2135,7 +2170,7 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
     const rssUrl = 'https://news.google.com/rss/search?q=Trump+OR+Democrats+OR+Republicans+OR+Congress+OR+MAGA&hl=en-US&gl=US&ceid=US:en';
     console.log('[find-stories] fetching RSS');
 
-    const rssRes = await httpsRequest(rssUrl, { headers: { 'User-Agent': 'Mozilla/5.0 TeamHub/1.0' } });
+    const rssRes = await fetchGoogleNewsRss(rssUrl, 'find-stories');
     console.log('[find-stories] RSS status:', rssRes.status);
 
     if (rssRes.status !== 200 || typeof rssRes.body !== 'string') {
