@@ -14,7 +14,9 @@
       "Bash(npm install:*)",
       "Bash(node -e \"const { YoutubeTranscript } = require\\('youtube-transcript'\\); console.log\\(typeof YoutubeTranscript.fetchTranscript\\)\")",
       "Bash(node -e \"const yt = require\\('youtube-transcript'\\); console.log\\(Object.keys\\(yt\\)\\)\")",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(grep -n \"queue\\\\|save\\\\|saved\" server/index.js client/src/components/*.jsx client/src/pages/*.jsx)",
+      "Bash(grep -rn \"queue\\\\|saved story\\\\|save story\" client/src/ server/*.js)"
     ]
   }
 }

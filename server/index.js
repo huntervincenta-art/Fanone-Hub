@@ -2271,6 +2271,296 @@ ${script}`;
   }
 });
 
+// POST /api/topical-narratives — auto-cluster articles into thesis-level narratives
+app.post('/api/topical-narratives', requireAuth, async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
+  }
+
+  try {
+    // Fetch articles from RSS (use full pool — no tight time filter for 30-day narratives)
+    const rssUrl = 'https://news.google.com/rss/search?q=Trump+OR+Democrats+OR+Republicans+OR+Congress+OR+MAGA&hl=en-US&gl=US&ceid=US:en';
+    const rssRes = await fetchGoogleNewsRss(rssUrl, 'topical-narratives');
+    if (rssRes.status !== 200 || typeof rssRes.body !== 'string') {
+      return res.status(502).json({ error: 'Google News RSS fetch failed' });
+    }
+
+    const rssParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+    const parsed = rssParser.parse(rssRes.body);
+    const rawItems = [].concat(parsed?.rss?.channel?.item || []);
+
+    const POLITICAL_KEYWORDS = /trump|white house|congress|senate|maga|democrat|republican|biden|political/i;
+    const JUNK_TITLE_WORDS = /\bnfl\b|\bnba\b|\bmlb\b|\bmovie\b|\bcelebrity\b|\bsports?\b|\bgame\b|\bscore\b|\bactor\b/i;
+
+    const seen = new Set();
+    const pool = [];
+    for (const item of rawItems) {
+      try {
+        const title = typeof item.title === 'string' ? item.title : (item.title?.['#text'] || String(item.title || ''));
+        const link = typeof item.link === 'string' ? item.link : '';
+        const pubDate = item.pubDate ? String(item.pubDate) : '';
+        const sourceName = typeof item.source === 'string' ? item.source : (item.source?.['#text'] || '');
+        const description = typeof item.description === 'string' ? item.description : '';
+        if (!title || !link || seen.has(link)) continue;
+        seen.add(link);
+        if (!POLITICAL_KEYWORDS.test(title) && !POLITICAL_KEYWORDS.test(description)) continue;
+        if (JUNK_TITLE_WORDS.test(title)) continue;
+        if (isTabloidSource({ link, sourceName })) continue;
+        pool.push({ title, link, pubDate, sourceName, description });
+      } catch { continue; }
+    }
+
+    if (pool.length < 3) {
+      return res.status(422).json({ error: 'Not enough articles available for narrative clustering.' });
+    }
+
+    // Format articles for Claude prompt
+    const articleList = pool.map((a, i) =>
+      `[${i}] "${a.title}" — ${a.sourceName || 'Unknown'} — ${a.pubDate || 'Unknown date'}\n    ${a.description || '(no summary)'}\n    ${a.link}`
+    ).join('\n\n');
+
+    const userMessage = `You are an expert YouTube content strategist for The Michael Fanone Show, a progressive political channel that performs best with these proven angles:
+- MAGA Defection (Trump's base cracking)
+- Inner Circle Collapse (allies/cabinet turning)
+- Specific Named Accountability
+- Mike's unique cop / former Republican voter perspective
+
+You will be given a list of recent political news articles. Your job is to identify NARRATIVE CLUSTERS — groups of 3-6 articles that share a THESIS-LEVEL pattern, not just a common topic.
+
+A thesis-level pattern means the articles, taken together, prove or illustrate a SPECIFIC ARGUMENT. Examples:
+
+GOOD narratives (thesis-level):
+- "Trump's revenge plots always backfire" (proven by 5 separate failed retaliation cases)
+- "Trump's cabinet is quietly resigning behind the scenes" (proven by 4 recent departures)
+- "MAGA is breaking on Epstein specifically" (proven by 4 prominent MAGA voices criticizing the cover-up)
+
+BAD narratives (just topics, not theses):
+- "Trump did 5 bad things this week" (no thesis, just a list)
+- "ICE in the news" (topic, not argument)
+- "Trump's legal troubles" (too broad, no specific claim)
+
+REQUIREMENTS:
+1. Each narrative MUST have at least one anchoring article from the last 7 days. Reject any cluster where all articles are older than 7 days.
+2. Prioritize narratives that align with the channel's proven angles (MAGA Defection, Inner Circle Collapse, named accountability).
+3. The thesis must be SPECIFIC and PROVABLE by the articles cited — not vague commentary.
+4. Suggest a video title using the channel's hook formula: EXPOSED: / IT'S HAPPENING: / UH-OH: / FINALLY: prefix. The title should sound like a Fanone video, not an academic essay. The thesis is the analytical depth; the title is still pure hook structure.
+
+Return JSON with this exact structure:
+
+{
+  "narratives": [
+    {
+      "thesis": "Why Trump's Revenge Plots Always Backfire",
+      "angle": "Five recent retaliation cases — Comey, James, Bolton, etc. — have all collapsed in court or leaked badly. The pattern reveals Trump's vendettas as performance, not strategy.",
+      "suggestedTitle": "EXPOSED: Trump's Revenge Plot Just BACKFIRED Again",
+      "anchorArticleIndex": 0,
+      "articleIndices": [0, 3, 7, 12, 18],
+      "scriptOutline": [
+        "HOOK (0:00-0:30): Open on the most recent backfire — Comey case falling apart this week. Specific detail.",
+        "BEAT 1 (0:30-2:30): Set up the pattern. 'This isn't the first time...'",
+        "BEAT 2 (2:30-5:00): Walk through 2-3 prior failed revenge plots. Names, dates, outcomes.",
+        "BEAT 3 (5:00-8:00): What this reveals about Trump's actual capabilities vs. his rhetoric.",
+        "BEAT 4 (8:00-11:00): Why it keeps failing — incompetence, leaks, judicial pushback.",
+        "PAYOFF (11:00-13:00): The thesis stated plainly. What viewers should watch for next."
+      ]
+    }
+  ]
+}
+
+Use article indices that correspond to the order articles were provided in the input. Identify 3-5 narratives total. If you can't find that many strong thesis-level patterns, return fewer — quality over quantity.
+
+Return ONLY the JSON. No preamble, no markdown fences.
+
+ARTICLES TO ANALYZE:
+${articleList}`;
+
+    const anthropicRes = await httpsRequest(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        timeout: 120000,
+      },
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: userMessage }],
+      }
+    );
+
+    if (anthropicRes.status !== 200) {
+      const errBody = anthropicRes.body || {};
+      const errMsg = (errBody.error && errBody.error.message) || JSON.stringify(errBody);
+      console.error('[topical-narratives] Anthropic error | status:', anthropicRes.status);
+      return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
+    }
+
+    const rawText = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    if (!rawText) return res.status(502).json({ error: 'Empty response from Anthropic' });
+
+    let result;
+    try {
+      const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+      result = JSON.parse(cleaned);
+    } catch {
+      console.error('[topical-narratives] JSON parse failed. Raw:', rawText.slice(0, 500));
+      return res.status(500).json({ error: 'Failed to parse narrative analysis as JSON', rawOutput: rawText });
+    }
+
+    // Log each narrative for later performance tracking
+    for (const n of (result.narratives || [])) {
+      console.log(`[topical-narrative] auto | ${n.articleIndices?.length || 0} articles | ${n.thesis}`);
+    }
+
+    res.json({ narratives: result.narratives || [], articles: pool });
+  } catch (err) {
+    console.error('POST /api/topical-narratives error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/topical-narratives/seed — build a narrative from a user-provided thesis
+app.post('/api/topical-narratives/seed', requireAuth, async (req, res) => {
+  const { thesis = '' } = req.body || {};
+  if (!thesis.trim()) return res.status(400).json({ error: 'thesis is required' });
+  if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
+
+  try {
+    const rssUrl = 'https://news.google.com/rss/search?q=Trump+OR+Democrats+OR+Republicans+OR+Congress+OR+MAGA&hl=en-US&gl=US&ceid=US:en';
+    const rssRes = await fetchGoogleNewsRss(rssUrl, 'topical-seed');
+    if (rssRes.status !== 200 || typeof rssRes.body !== 'string') {
+      return res.status(502).json({ error: 'Google News RSS fetch failed' });
+    }
+
+    const rssParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+    const parsed = rssParser.parse(rssRes.body);
+    const rawItems = [].concat(parsed?.rss?.channel?.item || []);
+
+    const POLITICAL_KEYWORDS = /trump|white house|congress|senate|maga|democrat|republican|biden|political/i;
+    const JUNK_TITLE_WORDS = /\bnfl\b|\bnba\b|\bmlb\b|\bmovie\b|\bcelebrity\b|\bsports?\b|\bgame\b|\bscore\b|\bactor\b/i;
+
+    const seen = new Set();
+    const pool = [];
+    for (const item of rawItems) {
+      try {
+        const title = typeof item.title === 'string' ? item.title : (item.title?.['#text'] || String(item.title || ''));
+        const link = typeof item.link === 'string' ? item.link : '';
+        const pubDate = item.pubDate ? String(item.pubDate) : '';
+        const sourceName = typeof item.source === 'string' ? item.source : (item.source?.['#text'] || '');
+        const description = typeof item.description === 'string' ? item.description : '';
+        if (!title || !link || seen.has(link)) continue;
+        seen.add(link);
+        if (!POLITICAL_KEYWORDS.test(title) && !POLITICAL_KEYWORDS.test(description)) continue;
+        if (JUNK_TITLE_WORDS.test(title)) continue;
+        if (isTabloidSource({ link, sourceName })) continue;
+        pool.push({ title, link, pubDate, sourceName, description });
+      } catch { continue; }
+    }
+
+    if (pool.length < 3) {
+      return res.status(422).json({ error: 'Not enough articles available.' });
+    }
+
+    const articleList = pool.map((a, i) =>
+      `[${i}] "${a.title}" — ${a.sourceName || 'Unknown'} — ${a.pubDate || 'Unknown date'}\n    ${a.description || '(no summary)'}\n    ${a.link}`
+    ).join('\n\n');
+
+    const userMessage = `You are an expert YouTube content strategist for The Michael Fanone Show. The user has provided a thesis. Your job is to find articles from the provided list that support this thesis, and build a narrative package around it.
+
+USER THESIS: ${thesis}
+
+Same rules apply:
+- At least one anchoring article must be from the last 7 days
+- Minimum 3 articles, ideally 4-6
+- Articles must genuinely support the thesis — don't force weak fits
+- Suggested title must use the EXPOSED: / IT'S HAPPENING: / UH-OH: / FINALLY: hook formula
+
+Return the SAME JSON structure as below, but with only one narrative object in the array:
+
+{
+  "narratives": [
+    {
+      "thesis": "...",
+      "angle": "...",
+      "suggestedTitle": "EXPOSED: ...",
+      "anchorArticleIndex": 0,
+      "articleIndices": [0, 3, 7],
+      "scriptOutline": [
+        "HOOK (0:00-0:30): ...",
+        "BEAT 1 (0:30-2:30): ...",
+        "BEAT 2 (2:30-5:00): ...",
+        "BEAT 3 (5:00-8:00): ...",
+        "BEAT 4 (8:00-11:00): ...",
+        "PAYOFF (11:00-13:00): ..."
+      ]
+    }
+  ]
+}
+
+If no strong supporting articles exist, return:
+{
+  "narratives": [],
+  "error": "Not enough recent articles support this thesis. Try refining or seed a different angle."
+}
+
+Return ONLY the JSON. No preamble, no markdown fences.
+
+ARTICLES AVAILABLE:
+${articleList}`;
+
+    const anthropicRes = await httpsRequest(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        timeout: 120000,
+      },
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: userMessage }],
+      }
+    );
+
+    if (anthropicRes.status !== 200) {
+      const errBody = anthropicRes.body || {};
+      const errMsg = (errBody.error && errBody.error.message) || JSON.stringify(errBody);
+      console.error('[topical-seed] Anthropic error | status:', anthropicRes.status);
+      return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
+    }
+
+    const rawText = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    if (!rawText) return res.status(502).json({ error: 'Empty response from Anthropic' });
+
+    let result;
+    try {
+      const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+      result = JSON.parse(cleaned);
+    } catch {
+      console.error('[topical-seed] JSON parse failed. Raw:', rawText.slice(0, 500));
+      return res.status(500).json({ error: 'Failed to parse narrative as JSON', rawOutput: rawText });
+    }
+
+    // Log for performance tracking
+    for (const n of (result.narratives || [])) {
+      console.log(`[topical-narrative] seed | ${n.articleIndices?.length || 0} articles | ${n.thesis}`);
+    }
+
+    res.json({ narratives: result.narratives || [], articles: pool, error: result.error || null });
+  } catch (err) {
+    console.error('POST /api/topical-narratives/seed error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/find-stories — scrape Google News RSS and enrich with Anthropic
 app.get('/api/find-stories', requireAuth, async (req, res) => {
   try {

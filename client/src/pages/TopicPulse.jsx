@@ -534,11 +534,253 @@ function ScriptAnalyzer({ passphrase }) {
   );
 }
 
+// ── Section 5: Topical Tab ──────────────────────────────────────────────────
+
+const MAGA_DEFECTION_RE = /maga|trump voter|former supporter|his base|loyal base|breaking with trump|regret voting|turning on trump|lifelong republican|former republican|base fractur/i;
+const INNER_CIRCLE_RE = /resign|quit|fired|betray|trump ally|advisor|cabinet|insider|loyalist|split with trump|break with trump|fracture|turn on trump|former aide/i;
+
+function NarrativeCard({ narrative, articles, passphrase, userName }) {
+  const [expanded, setExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const linkedArticles = (narrative.articleIndices || [])
+    .map(i => articles[i])
+    .filter(Boolean);
+
+  const thesisLower = (narrative.thesis + ' ' + narrative.angle).toLowerCase();
+  const isHighAngle = MAGA_DEFECTION_RE.test(thesisLower) || INNER_CIRCLE_RE.test(thesisLower);
+  const borderColor = isHighAngle ? 'var(--accent)' : 'var(--border)';
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await fetch('/api/stories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({
+          date: today,
+          headline: `[TOPICAL] ${narrative.suggestedTitle || narrative.thesis}`,
+          link: linkedArticles[0]?.link || '',
+          additionalLinks: linkedArticles.slice(1).map(a => a.link).join('\n'),
+          claimed: false,
+          user: userName,
+        }),
+      });
+      setSaved(true);
+    } catch {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="nt-card" style={{ borderLeftColor: borderColor }}>
+      <div className="nt-card-header">
+        <div className="nt-card-titles">
+          <h4 className="nt-thesis">{narrative.thesis}</h4>
+          <p className="nt-angle">{narrative.angle}</p>
+          <div className="nt-suggested-title">{narrative.suggestedTitle}</div>
+        </div>
+        <span className="nt-article-count">{linkedArticles.length} article{linkedArticles.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {narrative.scriptOutline && narrative.scriptOutline.length > 0 && (
+        <div className="nt-outline">
+          <strong>Script outline:</strong>
+          <ul>
+            {narrative.scriptOutline.map((beat, i) => <li key={i}>{beat}</li>)}
+          </ul>
+        </div>
+      )}
+
+      <div className="nt-card-actions">
+        <button
+          className="btn-ghost"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? 'Hide Articles' : 'Show Articles'}
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={saving || saved}
+        >
+          {saved ? 'Saved' : saving ? 'Saving...' : 'Save to Queue'}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="nt-articles-list">
+          {linkedArticles.map((a, i) => (
+            <div className="nt-article-row" key={i}>
+              <a href={a.link} target="_blank" rel="noopener noreferrer" className="nt-article-title">
+                {a.title}
+              </a>
+              <span className="nt-article-meta">
+                {a.sourceName || 'Unknown'} {a.pubDate ? ` — ${formatDate(a.pubDate)}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TopicalTab({ passphrase, userName }) {
+  // Auto-cluster state
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoError, setAutoError] = useState('');
+  const [autoNarratives, setAutoNarratives] = useState([]);
+  const [autoArticles, setAutoArticles] = useState([]);
+
+  // Manual seed state
+  const [seedThesis, setSeedThesis] = useState('');
+  const [seedLoading, setSeedLoading] = useState(false);
+  const [seedError, setSeedError] = useState('');
+  const [seedNarratives, setSeedNarratives] = useState([]);
+  const [seedArticles, setSeedArticles] = useState([]);
+
+  const fetchNarratives = async () => {
+    setAutoLoading(true);
+    setAutoError('');
+    setAutoNarratives([]);
+    try {
+      const res = await fetch('/api/topical-narratives', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      setAutoNarratives(data.narratives || []);
+      setAutoArticles(data.articles || []);
+    } catch (err) {
+      console.error('[TopicalTab] auto-cluster error:', err);
+      setAutoError(err.message || 'Analysis failed — try again');
+    } finally {
+      setAutoLoading(false);
+    }
+  };
+
+  const handleSeed = async () => {
+    setSeedLoading(true);
+    setSeedError('');
+    setSeedNarratives([]);
+    try {
+      const res = await fetch('/api/topical-narratives/seed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({ thesis: seedThesis }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      if (data.error) {
+        setSeedError(data.error);
+      } else if (!data.narratives || data.narratives.length === 0) {
+        setSeedError('Not enough recent articles support this thesis. Try refining or seed a different angle.');
+      } else {
+        setSeedNarratives(data.narratives);
+        setSeedArticles(data.articles || []);
+      }
+    } catch (err) {
+      console.error('[TopicalTab] seed error:', err);
+      setSeedError(err.message || 'Analysis failed — try again');
+    } finally {
+      setSeedLoading(false);
+    }
+  };
+
+  return (
+    <div className="nt-section">
+      {/* Auto-cluster section */}
+      <div className="nt-auto-section">
+        <div className="nt-section-header">
+          <div>
+            <h3>Suggested Narratives</h3>
+            <p className="sa-subheading">Auto-detected story clusters from the last 30 days, anchored by recent news</p>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={fetchNarratives}
+            disabled={autoLoading}
+          >
+            {autoLoading ? 'Generating...' : 'Generate New Suggestions'}
+          </button>
+        </div>
+
+        {autoLoading && (
+          <div className="tp-generating">
+            <div className="tp-spinner" />
+            <span>Clustering articles into narratives... this may take a minute.</span>
+          </div>
+        )}
+
+        {autoError && <div className="alert alert-error">{autoError}</div>}
+
+        {autoNarratives.length > 0 && (
+          <div className="nt-cards">
+            {autoNarratives.map((n, i) => (
+              <NarrativeCard key={i} narrative={n} articles={autoArticles} passphrase={passphrase} userName={userName} />
+            ))}
+          </div>
+        )}
+
+        {!autoLoading && !autoError && autoNarratives.length === 0 && autoArticles.length === 0 && (
+          <div className="tp-empty">Click "Generate New Suggestions" to detect narrative clusters in the current news cycle.</div>
+        )}
+      </div>
+
+      {/* Manual seed section */}
+      <div className="nt-seed-section">
+        <h3>Build Your Own Narrative</h3>
+        <p className="sa-subheading">Describe an angle. Hub will find matching articles and build the package.</p>
+
+        <textarea
+          className="sa-textarea"
+          rows={3}
+          value={seedThesis}
+          onChange={e => setSeedThesis(e.target.value)}
+          placeholder="What's the thesis? (e.g. 'Trump's cabinet is quietly fracturing')"
+          disabled={seedLoading}
+          style={{ minHeight: 'auto', fontFamily: 'inherit' }}
+        />
+
+        <button
+          className="btn btn-primary sa-analyze-btn"
+          onClick={handleSeed}
+          disabled={!seedThesis.trim() || seedLoading}
+        >
+          {seedLoading ? 'Building...' : 'Build Narrative'}
+        </button>
+
+        {seedLoading && (
+          <div className="tp-generating">
+            <div className="tp-spinner" />
+            <span>Building narrative package...</span>
+          </div>
+        )}
+
+        {seedError && <div className="alert alert-error" style={{ marginTop: '1rem' }}>{seedError}</div>}
+
+        {seedNarratives.length > 0 && (
+          <div className="nt-cards" style={{ marginTop: '1rem' }}>
+            {seedNarratives.map((n, i) => (
+              <NarrativeCard key={i} narrative={n} articles={seedArticles} passphrase={passphrase} userName={userName} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 const TP_TABS = [
   { key: 'newsCycle', label: 'News Cycle' },
   { key: 'scriptAnalyzer', label: 'Script Analyzer' },
+  { key: 'topical', label: 'Topical' },
 ];
 
 export default function TopicPulse({ passphrase, userName }) {
@@ -672,6 +914,10 @@ export default function TopicPulse({ passphrase, userName }) {
 
       {activeTab === 'scriptAnalyzer' && (
         <ScriptAnalyzer passphrase={passphrase} />
+      )}
+
+      {activeTab === 'topical' && (
+        <TopicalTab passphrase={passphrase} userName={userName} />
       )}
     </section>
   );
