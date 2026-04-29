@@ -185,12 +185,112 @@ function classifyCategory(text) {
   return 'Political Commentary'; // default
 }
 
+// ── Lane multiplier keywords ────────────────────────────────────────────────
+// BOOST multipliers (highest match wins, don't stack)
+const MAGA_DEFECTION_KEYWORDS = [
+  'maga', 'trump voter', 'former supporter', 'his base', 'loyal base',
+  'breaking with trump', 'regret voting', 'turning on trump',
+  'lifelong republican', 'former republican', 'maga crack', 'base fractur',
+];
+
+const INNER_CIRCLE_KEYWORDS = [
+  'resign', 'quit', 'fired', 'betray', 'trump ally', 'advisor', 'cabinet',
+  'insider', 'loyalist', 'split with trump', 'break with trump', 'fracture',
+  'turn on trump', 'former aide',
+];
+
+const ACCOUNTABILITY_ACTION_KEYWORDS = [
+  'indicted', 'charged', 'arrested', 'convicted', 'sentenced', 'fired', 'removed',
+];
+
+// PENALTY keywords
+const EPSTEIN_KEYWORDS = ['epstein', 'maxwell', 'ghislaine'];
+const FOREIGN_POLICY_KEYWORDS = ['iran', 'putin', 'europe', 'china', 'venezuela'];
+const REACTIVE_OUTRAGE_PATTERNS = [
+  'trump said', 'trump posted', 'trump did', 'trump called', 'trump claims',
+  'trump tweeted', 'trump attacked', 'trump slammed', 'trump blasted',
+];
+
+// Detect a proper noun: at least one capitalized word (2+ chars) that isn't
+// a sentence-start artifact. We check in the original (non-lowered) text.
+function hasProperNoun(text) {
+  // Match capitalized words that aren't common title-case noise
+  const names = text.match(/\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}/g);
+  return names && names.length > 0;
+}
+
+function computeLaneMultipliers(text, originalText) {
+  const applied = [];
+
+  // ── BOOST: pick the single highest matching lane ──
+  const boostCandidates = [];
+  if (MAGA_DEFECTION_KEYWORDS.some(kw => text.includes(kw))) {
+    boostCandidates.push({ lane: 'MAGA Defection', type: 'boost', multiplier: 2.0 });
+  }
+  if (INNER_CIRCLE_KEYWORDS.some(kw => text.includes(kw))) {
+    boostCandidates.push({ lane: 'Inner Circle Collapse', type: 'boost', multiplier: 1.8 });
+  }
+  const hasAccountabilityAction = ACCOUNTABILITY_ACTION_KEYWORDS.some(kw => text.includes(kw));
+  if (hasAccountabilityAction && hasProperNoun(originalText)) {
+    boostCandidates.push({ lane: 'Specific Named Accountability', type: 'boost', multiplier: 1.5 });
+  }
+  // Pick the highest multiplier; ties go to the first match (higher-priority lane)
+  let boost = 1.0;
+  if (boostCandidates.length > 0) {
+    boostCandidates.sort((a, b) => b.multiplier - a.multiplier);
+    const winner = boostCandidates[0];
+    boost = winner.multiplier;
+    applied.push(winner);
+  }
+
+  // ── PENALTIES: stack together ──
+  let penalty = 1.0;
+
+  // Epstein-only (0.4x) — only if primarily about Epstein with no fresh angle
+  const epsteinHits = EPSTEIN_KEYWORDS.filter(kw => text.includes(kw)).length;
+  if (epsteinHits > 0) {
+    // Check for fresh angle: a proper noun that isn't Epstein/Maxwell, or "new", "unsealed", "document"
+    const freshSignals = ['new ', 'unsealed', 'document', 'reveal', 'just released', 'newly'];
+    const hasFreshAngle = freshSignals.some(s => text.includes(s));
+    if (!hasFreshAngle) {
+      penalty *= 0.4;
+      applied.push({ lane: 'Epstein-only', type: 'penalty', multiplier: 0.4 });
+    }
+  }
+
+  // Generic foreign policy (0.6x) — unless there's a defection/inner-circle angle
+  const foreignHits = FOREIGN_POLICY_KEYWORDS.filter(kw => text.includes(kw)).length;
+  if (foreignHits > 0 && boost <= 1.0) {
+    // No boost lane matched, so it's generic foreign policy
+    penalty *= 0.6;
+    applied.push({ lane: 'Generic foreign policy', type: 'penalty', multiplier: 0.6 });
+  }
+
+  // Reactive outrage (0.7x) — "Trump said/did X" with no accountability hook
+  const reactiveHits = REACTIVE_OUTRAGE_PATTERNS.filter(p => text.includes(p)).length;
+  if (reactiveHits > 0) {
+    // Check for accountability hooks that redeem it
+    const accountabilityHooks = ['indicted', 'charged', 'arrested', 'convicted', 'resign',
+      'fired', 'defect', 'breaking with', 'turning on', 'consequence'];
+    const hasHook = accountabilityHooks.some(h => text.includes(h));
+    if (!hasHook) {
+      penalty *= 0.7;
+      applied.push({ lane: 'Reactive outrage', type: 'penalty', multiplier: 0.7 });
+    }
+  }
+
+  return { boost, penalty, combined: boost * penalty, applied };
+}
+
 // ── Scoring function ─────────────────────────────────────────────────────────
 
 function scoreHeadlineForFanone(article) {
-  const headline = String(article.headline || '').toLowerCase();
-  const description = String(article.description || '').toLowerCase();
-  const text = `${headline} ${headline} ${description}`; // headline weighted 2x
+  const headline = String(article.headline || '');
+  const description = String(article.description || '');
+  const originalText = `${headline} ${description}`;
+  const lowerHeadline = headline.toLowerCase();
+  const lowerDescription = description.toLowerCase();
+  const text = `${lowerHeadline} ${lowerHeadline} ${lowerDescription}`; // headline weighted 2x
 
   let score = 50;
   const matched = { high: [], medium: [], low: [], impact: [] };
@@ -243,8 +343,18 @@ function scoreHeadlineForFanone(article) {
     else if (ageHours > 24) score -= 10;
   }
 
-  // Clamp to 0–100
+  // Clamp base score to 0–100 before multipliers
   score = Math.max(0, Math.min(100, Math.round(score)));
+
+  // ── Lane multipliers (applied AFTER base score) ──
+  const multiplierResult = computeLaneMultipliers(text, originalText);
+  const baseScore = score;
+  score = Math.max(0, Math.min(100, Math.round(score * multiplierResult.combined)));
+
+  if (multiplierResult.applied.length > 0) {
+    const tags = multiplierResult.applied.map(m => `${m.lane}(${m.multiplier}x)`).join(', ');
+    console.log(`[score] ${baseScore} → ${score} | ${tags} | ${headline.slice(0, 80)}`);
+  }
 
   // Urgency classification: BREAKING vs EVERGREEN (time-sensitivity only)
   let urgency = 'EVERGREEN';
@@ -258,7 +368,7 @@ function scoreHeadlineForFanone(article) {
   // Category: "Law Enforcement" vs "Political Commentary"
   const category = classifyCategory(text);
 
-  return { score, matched, urgency, category };
+  return { score, matched, urgency, category, multipliers: multiplierResult.applied };
 }
 
 function fanoneOpportunityBucket(score) {

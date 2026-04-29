@@ -2164,6 +2164,113 @@ app.post('/api/scripts/:id/regenerate', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/analyze-script — analyze a Fanone script against proven angles
+app.post('/api/analyze-script', requireAuth, async (req, res) => {
+  const { script = '' } = req.body || {};
+  if (!script.trim()) {
+    return res.status(400).json({ error: 'script is required' });
+  }
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
+  }
+
+  const userMessage = `You are an expert YouTube content strategist for The Michael Fanone Show, a progressive political channel. Analyze the following script against these criteria:
+
+PRIMARY ANGLES (highest value — channel's proven winners):
+1. MAGA Defection: Trump's base cracking, MAGA insiders turning, former Trump voters regretting, his coalition fracturing
+2. Inner Circle Collapse: Trump's allies, advisors, cabinet, or loyalists betraying / quitting / turning on him
+
+SECONDARY ANGLES (acceptable):
+3. Specific Named Accountability: A specific ICE agent, cop, or congressperson facing real consequences — not generic "Trump's ICE is bad"
+4. Cop's Perspective: Mike's unique angle as a Jan 6 cop and former Republican voter
+
+WEAK ANGLES (flag these):
+- Generic "Trump did bad thing today" with no follow-on accountability
+- Epstein content (audience exhausted on this lane)
+- Generic Iran / foreign policy without a defection angle
+- Reactive outrage with no specific accountability hook
+
+Analyze the script and return a JSON response with this exact structure:
+
+{
+  "primaryAngleMatch": {
+    "matched": true | false,
+    "angle": "MAGA Defection" | "Inner Circle Collapse" | "Specific Accountability" | "Cop's Perspective" | "None",
+    "confidence": "high" | "medium" | "low"
+  },
+  "hookStrength": {
+    "rating": "strong" | "moderate" | "weak",
+    "explanation": "Does the opening 30 seconds promise a specific payoff (a name, dollar amount, defection, betrayal)? Brief explanation."
+  },
+  "titleFormulaFit": {
+    "fits": true | false,
+    "suggestedFormat": "EXPOSED: ..." | "IT'S HAPPENING: ..." | "UH-OH: ..." | "FINALLY: ..." | null,
+    "exampleTitle": "A specific title using one of the proven hook formats"
+  },
+  "estimatedRetention": "high" | "medium" | "low",
+  "recommendation": "GREEN" | "YELLOW" | "RED",
+  "summary": "One-sentence verdict",
+  "suggestions": [
+    "Specific actionable suggestion 1",
+    "Specific actionable suggestion 2",
+    "Specific actionable suggestion 3"
+  ]
+}
+
+GREEN = record as-is. YELLOW = rework specific sections. RED = kill or substantially rewrite.
+
+Return ONLY the JSON. No preamble, no markdown fences, no explanation outside the JSON.
+
+SCRIPT TO ANALYZE:
+${script}`;
+
+  try {
+    const anthropicRes = await httpsRequest(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        timeout: 120000,
+      },
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: userMessage }],
+      }
+    );
+
+    if (anthropicRes.status !== 200) {
+      const errBody = anthropicRes.body || {};
+      const errMsg = (errBody.error && errBody.error.message) || JSON.stringify(errBody);
+      console.error('[analyze-script] Anthropic error | status:', anthropicRes.status, '| body:', JSON.stringify(errBody));
+      return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
+    }
+
+    const rawText = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    if (!rawText) {
+      return res.status(502).json({ error: 'Empty response from Anthropic' });
+    }
+
+    let parsed;
+    try {
+      const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+      parsed = JSON.parse(cleaned);
+    } catch (parseErr) {
+      console.error('[analyze-script] JSON parse failed. Raw output:', rawText.slice(0, 500));
+      return res.status(500).json({ error: 'Failed to parse analysis as JSON', rawOutput: rawText });
+    }
+
+    res.json({ analysis: parsed });
+  } catch (err) {
+    console.error('POST /api/analyze-script error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/find-stories — scrape Google News RSS and enrich with Anthropic
 app.get('/api/find-stories', requireAuth, async (req, res) => {
   try {

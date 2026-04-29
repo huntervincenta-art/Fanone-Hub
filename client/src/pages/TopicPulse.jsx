@@ -413,9 +413,136 @@ function HistoryLog({ passphrase }) {
   );
 }
 
+// ── Section 4: Script Analyzer ──────────────────────────────────────────────
+
+const RECOMMENDATION_COLORS = { GREEN: '#4ade80', YELLOW: '#facc15', RED: '#ef4444' };
+
+function ScriptAnalyzer({ passphrase }) {
+  const [script, setScript] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+
+  const handleAnalyze = async () => {
+    setLoading(true);
+    setError('');
+    setResult(null);
+    try {
+      const res = await fetch('/api/analyze-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({ script }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      setResult(data.analysis);
+    } catch (err) {
+      console.error('[ScriptAnalyzer] error:', err);
+      setError('Analysis failed — try again');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const rec = result?.recommendation || '';
+  const borderColor = RECOMMENDATION_COLORS[rec] || 'var(--border)';
+
+  return (
+    <div className="sa-section">
+      <h3>Script Analyzer</h3>
+      <p className="sa-subheading">Paste a Fanone script. Get an instant read on whether it fits the proven angles.</p>
+
+      <textarea
+        className="sa-textarea"
+        rows={20}
+        value={script}
+        onChange={e => setScript(e.target.value)}
+        placeholder="Paste the full script here..."
+        disabled={loading}
+      />
+
+      <button
+        className="btn btn-primary sa-analyze-btn"
+        onClick={handleAnalyze}
+        disabled={!script.trim() || loading}
+      >
+        {loading ? 'Analyzing...' : 'Analyze Script'}
+      </button>
+
+      {loading && (
+        <div className="tp-generating">
+          <div className="tp-spinner" />
+          <span>Analyzing script...</span>
+        </div>
+      )}
+
+      {error && <div className="alert alert-error" style={{ marginTop: '1rem' }}>{error}</div>}
+
+      {result && (
+        <div className="sa-result" style={{ borderLeftColor: borderColor }}>
+          <div className="sa-result-header">
+            <span className="sa-badge" style={{ background: borderColor, color: rec === 'YELLOW' ? '#000' : '#fff' }}>
+              {rec}
+            </span>
+            <span className="sa-summary">{result.summary}</span>
+          </div>
+
+          <div className="sa-metrics-grid">
+            <div className="sa-metric">
+              <div className="sa-metric-label">Primary Angle</div>
+              <div className="sa-metric-value">
+                {result.primaryAngleMatch?.angle || 'None'}
+                {result.primaryAngleMatch?.matched && (
+                  <span className="sa-confidence"> ({result.primaryAngleMatch.confidence})</span>
+                )}
+              </div>
+            </div>
+            <div className="sa-metric">
+              <div className="sa-metric-label">Hook Strength</div>
+              <div className="sa-metric-value">{result.hookStrength?.rating || '—'}</div>
+              {result.hookStrength?.explanation && (
+                <div className="sa-metric-detail">{result.hookStrength.explanation}</div>
+              )}
+            </div>
+            <div className="sa-metric">
+              <div className="sa-metric-label">Title Fit</div>
+              <div className="sa-metric-value">{result.titleFormulaFit?.fits ? 'Yes' : 'No'}</div>
+            </div>
+            <div className="sa-metric">
+              <div className="sa-metric-label">Est. Retention</div>
+              <div className="sa-metric-value">{result.estimatedRetention || '—'}</div>
+            </div>
+          </div>
+
+          {result.titleFormulaFit?.fits && result.titleFormulaFit?.exampleTitle && (
+            <div className="sa-suggested-title">
+              <strong>Suggested title:</strong> {result.titleFormulaFit.exampleTitle}
+            </div>
+          )}
+
+          {result.suggestions && result.suggestions.length > 0 && (
+            <div className="sa-suggestions">
+              <strong>Suggestions:</strong>
+              <ul>
+                {result.suggestions.map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 
+const TP_TABS = [
+  { key: 'newsCycle', label: 'News Cycle' },
+  { key: 'scriptAnalyzer', label: 'Script Analyzer' },
+];
+
 export default function TopicPulse({ passphrase, userName }) {
+  const [activeTab, setActiveTab] = useState('newsCycle');
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState('');
   const [genResult, setGenResult] = useState(null);
@@ -502,30 +629,50 @@ export default function TopicPulse({ passphrase, userName }) {
         <h2>Topic Pulse</h2>
       </div>
 
-      {/* Section 1: Smart Input */}
-      <SmartInput onGenerate={handleGenerate} loading={generating} />
+      <div className="tp-tab-bar">
+        {TP_TABS.map(tab => (
+          <button
+            key={tab.key}
+            className={`tp-tab-btn${activeTab === tab.key ? ' tp-tab-btn--active' : ''}`}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Generated result */}
-      {genError && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{genError}</div>}
-      {generating && (
-        <div className="tp-generating">
-          <div className="tp-spinner" />
-          <span>Generating script… this may take a minute.</span>
-        </div>
+      {activeTab === 'newsCycle' && (
+        <>
+          {/* Section 1: Smart Input */}
+          <SmartInput onGenerate={handleGenerate} loading={generating} />
+
+          {/* Generated result */}
+          {genError && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{genError}</div>}
+          {generating && (
+            <div className="tp-generating">
+              <div className="tp-spinner" />
+              <span>Generating script… this may take a minute.</span>
+            </div>
+          )}
+          {genResult && (
+            <ScriptDisplay
+              script={genResult}
+              inputType={genInputType}
+              onClose={() => setGenResult(null)}
+            />
+          )}
+
+          {/* Section 2: Story List */}
+          <StoryList passphrase={passphrase} userName={userName} onGenerateFromStory={handleGenerateFromStory} />
+
+          {/* Section 3: History Log */}
+          <HistoryLog key={historyKey} passphrase={passphrase} />
+        </>
       )}
-      {genResult && (
-        <ScriptDisplay
-          script={genResult}
-          inputType={genInputType}
-          onClose={() => setGenResult(null)}
-        />
+
+      {activeTab === 'scriptAnalyzer' && (
+        <ScriptAnalyzer passphrase={passphrase} />
       )}
-
-      {/* Section 2: Story List */}
-      <StoryList passphrase={passphrase} userName={userName} onGenerateFromStory={handleGenerateFromStory} />
-
-      {/* Section 3: History Log */}
-      <HistoryLog key={historyKey} passphrase={passphrase} />
     </section>
   );
 }
