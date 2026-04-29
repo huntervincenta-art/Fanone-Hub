@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import OpportunityDonut from '../components/OpportunityDonut';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -534,6 +534,118 @@ function ScriptAnalyzer({ passphrase }) {
   );
 }
 
+// ── Narrating Loader (reusable) ─────────────────────────────────────────────
+
+const AUTO_STEPS = [
+  { at: 0,  status: 'Searching stories...',            sub: 'Pulling articles from the last 30 days' },
+  { at: 5,  status: 'Found stories',                   sub: 'Filtering for recency anchors' },
+  { at: 12, status: 'Constructing narratives...',       sub: 'Looking for thesis-level patterns' },
+  { at: 20, status: 'Hold on, this is the slow part',   sub: 'Claude is thinking — this takes a sec' },
+  { at: 35, status: 'Finishing touches',                sub: 'Building script outlines' },
+  { at: 50, status: 'Wrapping up...',                  sub: 'Almost there' },
+];
+
+const MANUAL_STEPS = [
+  { at: 0,  status: 'Reading your thesis...',   sub: 'Understanding the angle' },
+  { at: 4,  status: 'Scanning articles...',     sub: 'Looking for supporting stories' },
+  { at: 10, status: 'Building the package...',  sub: 'Drafting the script outline' },
+  { at: 20, status: 'Wrapping up...',           sub: 'Almost there' },
+];
+
+const ESTIMATED_DURATIONS = { auto: 50, manual: 25 };
+
+function NarratingLoader({ mode = 'auto', isComplete = false, error = null, onRetry = null, articleCount = null }) {
+  const steps = mode === 'manual' ? MANUAL_STEPS : AUTO_STEPS;
+  const estimatedDuration = ESTIMATED_DURATIONS[mode] || 50;
+
+  const startRef = useRef(Date.now());
+  const rafRef = useRef(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [done, setDone] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const prevMsgRef = useRef('');
+
+  // Tick elapsed time via requestAnimationFrame
+  useEffect(() => {
+    if (done) return;
+    const tick = () => {
+      setElapsed((Date.now() - startRef.current) / 1000);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [done]);
+
+  // Handle completion: snap to 100%, then hide after 300ms
+  useEffect(() => {
+    if (isComplete && !done) {
+      setDone(true);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      const timer = setTimeout(() => setVisible(false), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [isComplete, done]);
+
+  if (!visible && !error) return null;
+
+  // Ease-out progress: fast start, slow at end, caps at 95%
+  const rawProgress = Math.min(elapsed / estimatedDuration, 1);
+  const easedProgress = 1 - Math.pow(1 - rawProgress, 2.5); // ease-out
+  const barPercent = done ? 100 : Math.min(easedProgress * 95, 95);
+
+  // Current step based on elapsed seconds
+  let currentStep = steps[0];
+  for (const step of steps) {
+    if (elapsed >= step.at) currentStep = step;
+  }
+
+  // Inject real article count if available
+  let statusText = currentStep.status;
+  if (articleCount && currentStep.at === 5 && mode === 'auto') {
+    statusText = `Found ${articleCount} stories`;
+  }
+
+  // Track whether message changed for fade animation
+  const msgChanged = prevMsgRef.current !== statusText;
+  prevMsgRef.current = statusText;
+
+  if (error) {
+    return (
+      <div className="nl-container">
+        <div className="nl-bar-track">
+          <div className="nl-bar-fill nl-bar-fill--error" style={{ width: '100%' }} role="progressbar" aria-valuenow={100} aria-valuemin={0} aria-valuemax={100} />
+        </div>
+        <div className="nl-messages" aria-live="polite">
+          <div className="nl-status nl-status--error">Something went wrong</div>
+          <div className="nl-sub">{error}</div>
+        </div>
+        {onRetry && (
+          <button className="btn btn-primary nl-retry" onClick={onRetry}>Retry</button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="nl-container">
+      <div className="nl-bar-track">
+        <div
+          className={`nl-bar-fill${done ? ' nl-bar-fill--done' : ''}`}
+          style={{ width: `${barPercent}%` }}
+          role="progressbar"
+          aria-valuenow={Math.round(barPercent)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        />
+      </div>
+      <div className="nl-messages" aria-live="polite">
+        <div key={statusText} className={`nl-status${msgChanged ? ' nl-fade-in' : ''}`}>{statusText}</div>
+        <div key={currentStep.sub} className={`nl-sub${msgChanged ? ' nl-fade-in' : ''}`}>{currentStep.sub}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Section 5: Topical Tab ──────────────────────────────────────────────────
 
 const MAGA_DEFECTION_RE = /maga|trump voter|former supporter|his base|loyal base|breaking with trump|regret voting|turning on trump|lifelong republican|former republican|base fractur/i;
@@ -710,13 +822,21 @@ function TopicalTab({ passphrase, userName }) {
         </div>
 
         {autoLoading && (
-          <div className="tp-generating">
-            <div className="tp-spinner" />
-            <span>Clustering articles into narratives... this may take a minute.</span>
-          </div>
+          <NarratingLoader
+            mode="auto"
+            isComplete={false}
+            articleCount={autoArticles.length || null}
+          />
         )}
 
-        {autoError && <div className="alert alert-error">{autoError}</div>}
+        {!autoLoading && autoError && (
+          <NarratingLoader
+            mode="auto"
+            isComplete={true}
+            error={autoError}
+            onRetry={fetchNarratives}
+          />
+        )}
 
         {autoNarratives.length > 0 && (
           <div className="nt-cards">
@@ -755,13 +875,20 @@ function TopicalTab({ passphrase, userName }) {
         </button>
 
         {seedLoading && (
-          <div className="tp-generating">
-            <div className="tp-spinner" />
-            <span>Building narrative package...</span>
-          </div>
+          <NarratingLoader
+            mode="manual"
+            isComplete={false}
+          />
         )}
 
-        {seedError && <div className="alert alert-error" style={{ marginTop: '1rem' }}>{seedError}</div>}
+        {!seedLoading && seedError && (
+          <NarratingLoader
+            mode="manual"
+            isComplete={true}
+            error={seedError}
+            onRetry={handleSeed}
+          />
+        )}
 
         {seedNarratives.length > 0 && (
           <div className="nt-cards" style={{ marginTop: '1rem' }}>
