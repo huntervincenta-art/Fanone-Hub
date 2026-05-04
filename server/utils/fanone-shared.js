@@ -199,6 +199,20 @@ const INNER_CIRCLE_KEYWORDS = [
   'turn on trump', 'former aide',
 ];
 
+const MEDIA_MALPRACTICE_KEYWORDS = [
+  'cnn', 'msnbc', 'new york times', 'nyt', 'washington post', 'wapo',
+  'ap ', 'reuters', 'fox news', 'mainstream media', 'the press',
+  'both sides', 'false equivalence', 'sanewashing', 'normalizing',
+  'platformed', 'fact-check', 'retraction', 'correction', 'softball',
+  'benefit of the doubt',
+];
+const MEDIA_MALPRACTICE_BONUS_SIGNALS = [
+  'retraction', 'correction', 'retracted', 'corrected',
+  'covering for trump', 'cover for trump', 'defended trump', 'defending trump',
+  'softball interview', 'puff piece',
+  'caught lying', 'proven wrong', 'false claim', 'debunked',
+];
+
 const ACCOUNTABILITY_ACTION_KEYWORDS = [
   'indicted', 'charged', 'arrested', 'convicted', 'sentenced', 'fired', 'removed',
 ];
@@ -229,6 +243,13 @@ function computeLaneMultipliers(text, originalText) {
   }
   if (INNER_CIRCLE_KEYWORDS.some(kw => text.includes(kw))) {
     boostCandidates.push({ lane: 'Inner Circle Collapse', type: 'boost', multiplier: 1.8 });
+  }
+  if (MEDIA_MALPRACTICE_KEYWORDS.some(kw => text.includes(kw))) {
+    let mediaMult = 1.9;
+    if (MEDIA_MALPRACTICE_BONUS_SIGNALS.some(s => text.includes(s))) {
+      mediaMult += 0.3;
+    }
+    boostCandidates.push({ lane: 'Media Malpractice', type: 'boost', multiplier: mediaMult });
   }
   const hasAccountabilityAction = ACCOUNTABILITY_ACTION_KEYWORDS.some(kw => text.includes(kw));
   if (hasAccountabilityAction && hasProperNoun(originalText)) {

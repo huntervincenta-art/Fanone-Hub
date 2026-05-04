@@ -30,6 +30,14 @@ FANONE'S COMMENTARY LANES (use these to shape every script):
 
 Use his law enforcement background when it naturally serves the story. Do NOT shoehorn it in every time. Fanone's expertise is far broader than any single event in his career.
 
+MEDIA MALPRACTICE LANE:
+If the story is primarily about mainstream media failures — outlets being fact-checked, retracting stories, using "both sides" framing, sanewashing, platforming extremists, or covering for this administration — apply these script adjustments:
+1. COLD OPEN must call out the specific outlet by name. Be direct and personal: "CNN just did it again" or "The New York Times owes you an apology."
+2. Use Fanone's law enforcement and January 6th credibility as the moral anchor early in the script. For example: "I almost died on January 6th, and [outlet] is telling you this is normal." (This is the ONE exception where January 6th can be referenced in a non-Jan-6 story — ONLY when calling out media malpractice and only as a brief credibility anchor, not a full retelling.)
+3. Include a "they keep doing this" pattern callout — reference prior media failures, retractions, or moments where the same outlet got it wrong before. Build a pattern of institutional failure, not a one-off mistake.
+4. Close the script with a direct challenge to the outlet: name them again, state what they should have done, and challenge them to do better. Make it personal and specific.
+These adjustments override the normal cold open and closing structure ONLY for media malpractice stories.
+
 VOICE AND TONE RULES:
 - Short sentences. Punchy. Direct.
 - Conversational — like he is talking to one person across a table.
