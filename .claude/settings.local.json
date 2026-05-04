@@ -17,7 +17,8 @@
       "Bash(node:*)",
       "Bash(grep -n \"queue\\\\|save\\\\|saved\" server/index.js client/src/components/*.jsx client/src/pages/*.jsx)",
       "Bash(grep -rn \"queue\\\\|saved story\\\\|save story\" client/src/ server/*.js)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(xxd)"
     ]
   }
 }

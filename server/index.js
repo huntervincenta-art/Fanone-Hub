@@ -1998,7 +1998,7 @@ app.post('/api/fanone-hub/topic-script', requireAuth, async (req, res) => {
     if (isTopicalFlow) {
       // Build rich prompt from thesis + articles (NO full-body fetching — titles/summaries only)
       const articleBlock = linkedArticles.map((a, i) =>
-        `[${i + 1}] "${a.title || '(untitled)}" — ${a.source || a.sourceName || 'Unknown'} — ${a.date || a.pubDate || 'Unknown date'}\n    Summary: ${a.summary || a.description || '(no summary available)'}\n    URL: ${a.link || ''}`
+        `[${i + 1}] "${a.title || '(untitled)'}" — ${a.source || a.sourceName || 'Unknown'} — ${a.date || a.pubDate || 'Unknown date'}\n    Summary: ${a.summary || a.description || '(no summary available)'}\n    URL: ${a.link || ''}`
       ).join('\n\n');
 
       userMessage =
