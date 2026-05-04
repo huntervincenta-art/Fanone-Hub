@@ -454,20 +454,37 @@ const scriptSchema = new mongoose.Schema({
   generatedScript:  { type: String, required: true },
   previousVersion:  { type: String, default: '' },
   generatedBy:      { type: String, default: '' },
-  inputType:        { type: String, enum: ['article', 'video', 'topic', 'url'], default: 'article' },
+  inputType:        { type: String, enum: ['article', 'video', 'topic', 'url', 'topical'], default: 'article' },
   sourceUrl:        { type: String, default: '' },
+  sourceNarrativeId: { type: String, default: '' },
+  sourceUrls:       { type: [String], default: [] },
   createdAt:        { type: String, default: () => new Date().toISOString() },
   updatedAt:        { type: String, default: '' },
 }, { versionKey: false, collection: 'scripts' });
 
-const Story        = mongoose.model('Story', storySchema);
-const Post         = mongoose.model('Post', postSchema);
-const Log          = mongoose.model('Log', logSchema);
-const Comment      = mongoose.model('Comment', commentSchema);
-const DM           = mongoose.model('DM', dmSchema);
-const ListItem     = mongoose.model('ListItem', listItemSchema);
-const HunterUpdate = mongoose.model('HunterUpdate', hunterUpdateSchema);
-const Script       = mongoose.model('Script', scriptSchema);
+const topicalNarrativeSchema = new mongoose.Schema({
+  _id:             { type: String, default: () => Date.now().toString() },
+  thesis:          { type: String, required: true },
+  angle:           { type: String, default: '' },
+  suggestedTitle:  { type: String, default: '' },
+  scriptOutline:   { type: [String], default: [] },
+  linkedArticles:  { type: [{ title: String, link: String, sourceName: String, pubDate: String, description: String }], default: [] },
+  generatedAt:     { type: String, default: () => new Date().toISOString() },
+  generatedBy:     { type: String, default: '' },
+  batchId:         { type: String, required: true },
+  seedMode:        { type: String, enum: ['auto', 'seed'], default: 'auto' },
+  status:          { type: String, enum: ['active', 'used', 'dismissed'], default: 'active' },
+}, { versionKey: false, collection: 'topicalNarratives' });
+
+const Story             = mongoose.model('Story', storySchema);
+const Post              = mongoose.model('Post', postSchema);
+const Log               = mongoose.model('Log', logSchema);
+const Comment           = mongoose.model('Comment', commentSchema);
+const DM                = mongoose.model('DM', dmSchema);
+const ListItem          = mongoose.model('ListItem', listItemSchema);
+const HunterUpdate      = mongoose.model('HunterUpdate', hunterUpdateSchema);
+const Script            = mongoose.model('Script', scriptSchema);
+const TopicalNarrative  = mongoose.model('TopicalNarrative', topicalNarrativeSchema);
 
 // Convert mongoose doc → plain object with `id` field instead of `_id`
 function toObj(doc) {
@@ -1965,18 +1982,42 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
 });
 
 // POST /api/fanone-hub/topic-script — generate MFS script from a plain topic/angle
+// Accepts either: { topic } (legacy) or { thesis, angle, suggestedTitle, outline, linkedArticles, narrativeId } (topical flow)
 app.post('/api/fanone-hub/topic-script', requireAuth, async (req, res) => {
-  const { topic = '', user = '' } = req.body || {};
-  if (!topic.trim()) return res.status(400).json({ error: 'topic is required' });
+  const { topic = '', user = '', thesis = '', angle = '', suggestedTitle = '', outline = [], linkedArticles = [], narrativeId = '' } = req.body || {};
+
+  // Topical narrative flow: thesis is provided with article context
+  const isTopicalFlow = !!thesis.trim();
+  if (!isTopicalFlow && !topic.trim()) return res.status(400).json({ error: 'topic is required' });
   if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured' });
 
   try {
     const todayStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const userMessage =
-      `Today's date is ${todayStr}. Generate a full MFS script package from this topic or angle:\n\n` +
-      `Topic: ${topic}\n\n` +
-      `Research this topic thoroughly and produce a script. If the topic is vague, pick the most newsworthy, ` +
-      `Fanone-relevant angle you can find. Do NOT make up facts — flag anything unverifiable with [VERIFY].`;
+    let userMessage;
+
+    if (isTopicalFlow) {
+      // Build rich prompt from thesis + articles (NO full-body fetching — titles/summaries only)
+      const articleBlock = linkedArticles.map((a, i) =>
+        `[${i + 1}] "${a.title || '(untitled)}" — ${a.source || a.sourceName || 'Unknown'} — ${a.date || a.pubDate || 'Unknown date'}\n    Summary: ${a.summary || a.description || '(no summary available)'}\n    URL: ${a.link || ''}`
+      ).join('\n\n');
+
+      userMessage =
+        `Today's date is ${todayStr}. Generate a full MFS script package from this TOPICAL NARRATIVE.\n\n` +
+        `THESIS: ${thesis}\n` +
+        `ANGLE: ${angle}\n` +
+        `SUGGESTED TITLE: ${suggestedTitle}\n\n` +
+        (outline.length > 0 ? `SCRIPT OUTLINE (follow this beat structure):\n${outline.map((b, i) => `${i + 1}. ${b}`).join('\n')}\n\n` : '') +
+        `SUPPORTING ARTICLES (use these as source material — reference them by name and outlet):\n${articleBlock}\n\n` +
+        `IMPORTANT: Do NOT attempt to fetch or read the full article bodies. Use the titles, summaries, and source names provided above as your source material. ` +
+        `The thesis and angle are pre-researched — your job is to write the script in Fanone's voice, weaving these sources together into the narrative. ` +
+        `Flag anything you cannot verify from the provided summaries with [VERIFY].`;
+    } else {
+      userMessage =
+        `Today's date is ${todayStr}. Generate a full MFS script package from this topic or angle:\n\n` +
+        `Topic: ${topic}\n\n` +
+        `Research this topic thoroughly and produce a script. If the topic is vague, pick the most newsworthy, ` +
+        `Fanone-relevant angle you can find. Do NOT make up facts — flag anything unverifiable with [VERIFY].`;
+    }
 
     const anthropicRes = await httpsRequest(
       'https://api.anthropic.com/v1/messages',
@@ -2009,16 +2050,30 @@ app.post('/api/fanone-hub/topic-script', requireAuth, async (req, res) => {
 
     let savedId = null;
     try {
-      const saved = await new Script({
-        articleTitle:    topic,
-        articleSource:   'Topic',
+      const saveData = {
+        articleTitle:    isTopicalFlow ? (suggestedTitle || thesis) : topic,
+        articleSource:   isTopicalFlow ? 'Topical Narrative' : 'Topic',
         generatedScript: script,
         generatedBy:     user || '',
-        inputType:       'topic',
-      }).save();
+        inputType:       isTopicalFlow ? 'topical' : 'topic',
+      };
+      if (isTopicalFlow) {
+        saveData.sourceNarrativeId = narrativeId || '';
+        saveData.sourceUrls = linkedArticles.map(a => a.link).filter(Boolean);
+      }
+      const saved = await new Script(saveData).save();
       savedId = saved._id;
     } catch (saveErr) {
       console.error('[topic-script] failed to persist script:', saveErr.message);
+    }
+
+    // Mark the source narrative as 'used' if we have an ID
+    if (isTopicalFlow && narrativeId) {
+      try {
+        await TopicalNarrative.findByIdAndUpdate(narrativeId, { status: 'used' });
+      } catch (markErr) {
+        console.error('[topic-script] failed to mark narrative as used:', markErr.message);
+      }
     }
 
     res.json({ script, id: savedId });
@@ -2034,9 +2089,11 @@ app.get('/api/scripts', requireAuth, async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const skip = (page - 1) * limit;
+    const filter = {};
+    if (req.query.inputType) filter.inputType = req.query.inputType;
     const [scripts, total] = await Promise.all([
-      Script.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Script.countDocuments({}),
+      Script.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Script.countDocuments(filter),
     ]);
     res.json({
       scripts: scripts.map(s => { s.id = s._id; delete s._id; return s; }),
@@ -2411,12 +2468,49 @@ ${articleList}`;
       return res.status(500).json({ error: 'Failed to parse narrative analysis as JSON', rawOutput: rawText });
     }
 
-    // Log each narrative for later performance tracking
-    for (const n of (result.narratives || [])) {
-      console.log(`[topical-narrative] auto | ${n.articleIndices?.length || 0} articles | ${n.thesis}`);
+    // Persist narratives to MongoDB
+    const batchId = Date.now().toString();
+    const user = req.body.user || '';
+    const narratives = result.narratives || [];
+
+    // Dismiss all previous active auto-batch narratives
+    try {
+      await TopicalNarrative.updateMany(
+        { seedMode: 'auto', status: 'active' },
+        { status: 'dismissed' }
+      );
+    } catch (dismissErr) {
+      console.error('[topical-narratives] failed to dismiss old batch:', dismissErr.message);
     }
 
-    res.json({ narratives: result.narratives || [], articles: pool });
+    const savedNarratives = [];
+    for (const n of narratives) {
+      const resolvedArticles = (n.articleIndices || [])
+        .map(i => pool[i])
+        .filter(Boolean)
+        .map(a => ({ title: a.title, link: a.link, sourceName: a.sourceName, pubDate: a.pubDate, description: a.description }));
+
+      try {
+        const doc = await new TopicalNarrative({
+          thesis: n.thesis || '',
+          angle: n.angle || '',
+          suggestedTitle: n.suggestedTitle || '',
+          scriptOutline: n.scriptOutline || [],
+          linkedArticles: resolvedArticles,
+          generatedBy: user,
+          batchId,
+          seedMode: 'auto',
+          status: 'active',
+        }).save();
+        savedNarratives.push({ ...n, _id: doc._id, linkedArticles: resolvedArticles });
+        console.log(`[topical-narrative] auto | ${resolvedArticles.length} articles | ${n.thesis}`);
+      } catch (saveErr) {
+        console.error('[topical-narrative] save failed:', saveErr.message);
+        savedNarratives.push(n);
+      }
+    }
+
+    res.json({ narratives: savedNarratives, articles: pool, batchId });
   } catch (err) {
     console.error('POST /api/topical-narratives error:', err.message);
     res.status(500).json({ error: err.message });
@@ -2549,14 +2643,79 @@ ${articleList}`;
       return res.status(500).json({ error: 'Failed to parse narrative as JSON', rawOutput: rawText });
     }
 
-    // Log for performance tracking
-    for (const n of (result.narratives || [])) {
-      console.log(`[topical-narrative] seed | ${n.articleIndices?.length || 0} articles | ${n.thesis}`);
+    // Persist seeded narratives to MongoDB
+    const batchId = Date.now().toString();
+    const user = req.body.user || '';
+    const narratives = result.narratives || [];
+
+    const savedNarratives = [];
+    for (const n of narratives) {
+      const resolvedArticles = (n.articleIndices || [])
+        .map(i => pool[i])
+        .filter(Boolean)
+        .map(a => ({ title: a.title, link: a.link, sourceName: a.sourceName, pubDate: a.pubDate, description: a.description }));
+
+      try {
+        const doc = await new TopicalNarrative({
+          thesis: n.thesis || '',
+          angle: n.angle || '',
+          suggestedTitle: n.suggestedTitle || '',
+          scriptOutline: n.scriptOutline || [],
+          linkedArticles: resolvedArticles,
+          generatedBy: user,
+          batchId,
+          seedMode: 'seed',
+          status: 'active',
+        }).save();
+        savedNarratives.push({ ...n, _id: doc._id, linkedArticles: resolvedArticles });
+        console.log(`[topical-narrative] seed | ${resolvedArticles.length} articles | ${n.thesis}`);
+      } catch (saveErr) {
+        console.error('[topical-narrative] seed save failed:', saveErr.message);
+        savedNarratives.push(n);
+      }
     }
 
-    res.json({ narratives: result.narratives || [], articles: pool, error: result.error || null });
+    res.json({ narratives: savedNarratives, articles: pool, error: result.error || null, batchId });
   } catch (err) {
     console.error('POST /api/topical-narratives/seed error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/topical-narratives/recent — return most recent active batch + any active seed narratives
+app.get('/api/topical-narratives/recent', requireAuth, async (req, res) => {
+  try {
+    // Find all active narratives, newest first
+    const active = await TopicalNarrative.find({ status: { $in: ['active', 'used'] } })
+      .sort({ generatedAt: -1 })
+      .limit(50)
+      .lean();
+
+    const narratives = active.map(n => {
+      n.id = n._id;
+      delete n._id;
+      return n;
+    });
+
+    res.json({ narratives });
+  } catch (err) {
+    console.error('GET /api/topical-narratives/recent error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/topical-narratives/:id/status — update narrative status
+app.patch('/api/topical-narratives/:id/status', requireAuth, async (req, res) => {
+  const { status } = req.body || {};
+  if (!['active', 'used', 'dismissed'].includes(status)) {
+    return res.status(400).json({ error: 'status must be active, used, or dismissed' });
+  }
+  try {
+    const doc = await TopicalNarrative.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!doc) return res.status(404).json({ error: 'Narrative not found' });
+    res.json({ ok: true, status: doc.status });
+  } catch (err) {
+    console.error('PATCH /api/topical-narratives/:id/status error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

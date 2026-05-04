@@ -306,7 +306,7 @@ function StoryList({ passphrase, userName, onGenerateFromStory }) {
 
 // ── Section 3: History Log ───────────────────────────────────────────────────
 
-function HistoryLog({ passphrase }) {
+function HistoryLog({ passphrase, inputType, heading }) {
   const [scripts, setScripts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -319,7 +319,8 @@ function HistoryLog({ passphrase }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/scripts?page=${p}&limit=20`, {
+      const typeParam = inputType ? `&inputType=${inputType}` : '';
+      const res = await fetch(`/api/scripts?page=${p}&limit=20${typeParam}`, {
         headers: { 'x-passphrase': passphrase },
       });
       if (!res.ok) throw new Error('Failed to load scripts');
@@ -332,7 +333,7 @@ function HistoryLog({ passphrase }) {
     } finally {
       setLoading(false);
     }
-  }, [passphrase]);
+  }, [passphrase, inputType]);
 
   useEffect(() => { fetchScripts(); }, [fetchScripts]);
 
@@ -360,12 +361,12 @@ function HistoryLog({ passphrase }) {
     } catch {}
   };
 
-  const typeLabels = { article: 'Article', video: 'Video', topic: 'Topic', url: 'URL' };
+  const typeLabels = { article: 'Article', video: 'Video', topic: 'Topic', url: 'URL', topical: 'Topical' };
 
   return (
     <div className="tp-history-section">
       <div className="tp-history-header">
-        <h3>Script History</h3>
+        <h3>{heading || 'Script History'}</h3>
         <button className="btn-ghost" onClick={() => fetchScripts(1)} disabled={loading}>
           {loading ? 'Loading…' : 'Refresh'}
         </button>
@@ -651,43 +652,59 @@ function NarratingLoader({ mode = 'auto', isComplete = false, error = null, onRe
 const MAGA_DEFECTION_RE = /maga|trump voter|former supporter|his base|loyal base|breaking with trump|regret voting|turning on trump|lifelong republican|former republican|base fractur/i;
 const INNER_CIRCLE_RE = /resign|quit|fired|betray|trump ally|advisor|cabinet|insider|loyalist|split with trump|break with trump|fracture|turn on trump|former aide/i;
 
-function NarrativeCard({ narrative, articles, passphrase, userName }) {
+function NarrativeCard({ narrative, articles, passphrase, userName, onScriptGenerated }) {
   const [expanded, setExpanded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState('');
+  const [generatedScript, setGeneratedScript] = useState(null);
 
-  const linkedArticles = (narrative.articleIndices || [])
-    .map(i => articles[i])
-    .filter(Boolean);
+  // Support both pre-resolved linkedArticles (from MongoDB) and articleIndices (from fresh generation)
+  const linkedArticles = narrative.linkedArticles && narrative.linkedArticles.length > 0
+    ? narrative.linkedArticles
+    : (narrative.articleIndices || []).map(i => articles[i]).filter(Boolean);
 
   const thesisLower = (narrative.thesis + ' ' + narrative.angle).toLowerCase();
   const isHighAngle = MAGA_DEFECTION_RE.test(thesisLower) || INNER_CIRCLE_RE.test(thesisLower);
-  const borderColor = isHighAngle ? 'var(--accent)' : 'var(--border)';
+  const isUsed = narrative.status === 'used';
+  const borderColor = isUsed ? 'var(--muted)' : isHighAngle ? 'var(--accent)' : 'var(--border)';
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setGenError('');
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      await fetch('/api/stories', {
+      const res = await fetch('/api/fanone-hub/topic-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
         body: JSON.stringify({
-          date: today,
-          headline: `[TOPICAL] ${narrative.suggestedTitle || narrative.thesis}`,
-          link: linkedArticles[0]?.link || '',
-          additionalLinks: linkedArticles.slice(1).map(a => a.link).join('\n'),
-          claimed: false,
+          thesis: narrative.thesis,
+          angle: narrative.angle || '',
+          suggestedTitle: narrative.suggestedTitle || '',
+          outline: narrative.scriptOutline || [],
+          linkedArticles: linkedArticles.map(a => ({
+            title: a.title || '',
+            summary: a.description || '',
+            link: a.link || '',
+            source: a.sourceName || '',
+            date: a.pubDate || '',
+          })),
+          narrativeId: narrative._id || narrative.id || '',
           user: userName,
         }),
       });
-      setSaved(true);
-    } catch {
-      setSaving(false);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      setGeneratedScript(data.script);
+      if (onScriptGenerated) onScriptGenerated(narrative._id || narrative.id);
+    } catch (err) {
+      setGenError(err.message || 'Script generation failed');
+    } finally {
+      setGenerating(false);
     }
   };
 
   return (
-    <div className="nt-card" style={{ borderLeftColor: borderColor }}>
+    <div className="nt-card" style={{ borderLeftColor: borderColor, opacity: isUsed ? 0.6 : 1 }}>
+      {isUsed && <div className="nt-used-badge">Script Generated</div>}
       <div className="nt-card-header">
         <div className="nt-card-titles">
           <h4 className="nt-thesis">{narrative.thesis}</h4>
@@ -715,10 +732,10 @@ function NarrativeCard({ narrative, articles, passphrase, userName }) {
         </button>
         <button
           className="btn btn-primary"
-          onClick={handleSave}
-          disabled={saving || saved}
+          onClick={handleGenerate}
+          disabled={generating}
         >
-          {saved ? 'Saved' : saving ? 'Saving...' : 'Save to Queue'}
+          {generating ? 'Generating Script…' : generatedScript ? 'Regenerate Script' : 'Generate Script'}
         </button>
       </div>
 
@@ -734,6 +751,25 @@ function NarrativeCard({ narrative, articles, passphrase, userName }) {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {generating && (
+        <div className="tp-generating" style={{ marginTop: '1rem' }}>
+          <div className="tp-spinner" />
+          <span>Generating script… this may take a minute.</span>
+        </div>
+      )}
+
+      {genError && <div className="alert alert-error" style={{ marginTop: '1rem' }}>{genError}</div>}
+
+      {generatedScript && (
+        <div style={{ marginTop: '1rem' }}>
+          <ScriptDisplay
+            script={generatedScript}
+            inputType="topical"
+            onClose={() => setGeneratedScript(null)}
+          />
         </div>
       )}
     </div>
@@ -754,6 +790,37 @@ function TopicalTab({ passphrase, userName }) {
   const [seedNarratives, setSeedNarratives] = useState([]);
   const [seedArticles, setSeedArticles] = useState([]);
 
+  // Persistence: whether we already loaded from DB
+  const [initialLoaded, setInitialLoaded] = useState(false);
+
+  // History refresh key
+  const [historyKey, setHistoryKey] = useState(0);
+
+  // Load persisted narratives on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/topical-narratives/recent', {
+          headers: { 'x-passphrase': passphrase },
+        });
+        if (!res.ok) throw new Error('Failed to load');
+        const data = await res.json();
+        if (cancelled) return;
+        const narratives = data.narratives || [];
+        const autoFromDb = narratives.filter(n => n.seedMode === 'auto');
+        const seedFromDb = narratives.filter(n => n.seedMode === 'seed');
+        if (autoFromDb.length > 0) setAutoNarratives(autoFromDb);
+        if (seedFromDb.length > 0) setSeedNarratives(seedFromDb);
+      } catch (err) {
+        console.error('[TopicalTab] failed to load persisted narratives:', err);
+      } finally {
+        if (!cancelled) setInitialLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [passphrase]);
+
   const fetchNarratives = async () => {
     setAutoLoading(true);
     setAutoError('');
@@ -762,6 +829,7 @@ function TopicalTab({ passphrase, userName }) {
       const res = await fetch('/api/topical-narratives', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
+        body: JSON.stringify({ user: userName }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -783,7 +851,7 @@ function TopicalTab({ passphrase, userName }) {
       const res = await fetch('/api/topical-narratives/seed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
-        body: JSON.stringify({ thesis: seedThesis }),
+        body: JSON.stringify({ thesis: seedThesis, user: userName }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -801,6 +869,24 @@ function TopicalTab({ passphrase, userName }) {
     } finally {
       setSeedLoading(false);
     }
+  };
+
+  // Called after a script is generated from a card — mark it used locally + refresh history
+  const handleScriptGenerated = (narrativeId) => {
+    setAutoNarratives(prev => prev.map(n =>
+      (n._id === narrativeId || n.id === narrativeId) ? { ...n, status: 'used' } : n
+    ));
+    setSeedNarratives(prev => prev.map(n =>
+      (n._id === narrativeId || n.id === narrativeId) ? { ...n, status: 'used' } : n
+    ));
+    setHistoryKey(k => k + 1);
+  };
+
+  // Sort: active first, used at bottom
+  const sortByStatus = (arr) => {
+    const active = arr.filter(n => n.status !== 'used');
+    const used = arr.filter(n => n.status === 'used');
+    return [...active, ...used];
   };
 
   return (
@@ -838,15 +924,15 @@ function TopicalTab({ passphrase, userName }) {
           />
         )}
 
-        {autoNarratives.length > 0 && (
+        {sortByStatus(autoNarratives).length > 0 && (
           <div className="nt-cards">
-            {autoNarratives.map((n, i) => (
-              <NarrativeCard key={i} narrative={n} articles={autoArticles} passphrase={passphrase} userName={userName} />
+            {sortByStatus(autoNarratives).map((n, i) => (
+              <NarrativeCard key={n._id || n.id || i} narrative={n} articles={autoArticles} passphrase={passphrase} userName={userName} onScriptGenerated={handleScriptGenerated} />
             ))}
           </div>
         )}
 
-        {!autoLoading && !autoError && autoNarratives.length === 0 && autoArticles.length === 0 && (
+        {!autoLoading && !autoError && autoNarratives.length === 0 && initialLoaded && (
           <div className="tp-empty">Click "Generate New Suggestions" to detect narrative clusters in the current news cycle.</div>
         )}
       </div>
@@ -890,14 +976,17 @@ function TopicalTab({ passphrase, userName }) {
           />
         )}
 
-        {seedNarratives.length > 0 && (
+        {sortByStatus(seedNarratives).length > 0 && (
           <div className="nt-cards" style={{ marginTop: '1rem' }}>
-            {seedNarratives.map((n, i) => (
-              <NarrativeCard key={i} narrative={n} articles={seedArticles} passphrase={passphrase} userName={userName} />
+            {sortByStatus(seedNarratives).map((n, i) => (
+              <NarrativeCard key={n._id || n.id || i} narrative={n} articles={seedArticles} passphrase={passphrase} userName={userName} onScriptGenerated={handleScriptGenerated} />
             ))}
           </div>
         )}
       </div>
+
+      {/* History Log — topical scripts only */}
+      <HistoryLog key={historyKey} passphrase={passphrase} inputType="topical" heading="Recent Topical Scripts" />
     </div>
   );
 }

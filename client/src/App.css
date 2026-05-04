@@ -7793,6 +7793,21 @@ details[open] .notif-all-topics-summary::before {
   border-left: 4px solid var(--border);
   border-radius: var(--radius);
   padding: 1.25rem;
+  position: relative;
+}
+.nt-used-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--surface-alt, var(--bg));
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
 }
 .nt-card-header {
   display: flex;
