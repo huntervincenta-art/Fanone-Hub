@@ -18,7 +18,9 @@
       "Bash(grep -n \"queue\\\\|save\\\\|saved\" server/index.js client/src/components/*.jsx client/src/pages/*.jsx)",
       "Bash(grep -rn \"queue\\\\|saved story\\\\|save story\" client/src/ server/*.js)",
       "Bash(xargs grep:*)",
-      "Bash(xxd)"
+      "Bash(xxd)",
+      "Bash(sed -i '1825s/max_tokens: 16000/max_tokens: 3000/' \"C:\\\\Users\\\\claud\\\\OneDrive\\\\Desktop\\\\fanone-hub\\\\server\\\\index.js\")",
+      "Bash(sed -i '1945s/max_tokens: 16000/max_tokens: 3000/' \"C:\\\\Users\\\\claud\\\\OneDrive\\\\Desktop\\\\fanone-hub\\\\server\\\\index.js\")"
     ]
   }
 }
