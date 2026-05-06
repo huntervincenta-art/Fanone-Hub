@@ -126,9 +126,20 @@ QUALITY CHECKS — verify before outputting:
 - CTA is engagement-only (comment, share) — NO subscribe/bell/like asks
 
 CONSTRAINTS:
-- Do not fabricate quotes, statistics, or claims. If source material is thin, flag with [VERIFY] or [RESEARCH NEEDED].
-- Do not invent direct quotes from real people unless the source contains them. Use paraphrased attribution.
+- HARD LENGTH CAP: The teleprompter script body must be between 1,200 and 1,500 words. This is a NON-NEGOTIABLE ceiling. At ~150 words per minute, this delivers an 8-10 minute video. Do not exceed 1,500 words under any circumstance. If you find yourself approaching the cap, cut — do not pad.
+- NO PADDING: Every sentence must advance the story, the argument, or the activation. If a sentence could be deleted without losing meaning, delete it before outputting. Do not restate points for emphasis more than once.
+- NO TOPIC REPETITION: Each major point appears ONCE. Do not loop back to the same idea in different words. If the cold open already established the stakes, the body does not re-establish them.
+- STAY ON THE STORY: Only use facts, names, quotes, and specifics that appear in the provided article text. Do not introduce tangential stories, historical comparisons not present in the source, or "this is just like when..." digressions unless the source material supports them.
+- NO FABRICATION: Do not invent quotes, statistics, dollar amounts, dates, or claims. If the source is thin, write a tighter, shorter script — do not fill the gap with invented detail. Flag genuinely missing information with [VERIFY] inline.
+- NO HALLUCINATION CHECK: Before outputting, scan your script. If any specific claim (a number, a quote, a name, an event) does not appear in the source article, either remove it or flag it with [VERIFY].
+- Do not invent direct quotes from real people unless the source contains them. Use paraphrased attribution: "According to the reporting..." or "Officials have described it as..."
 - If the story involves legal matters, say what is alleged or reported — do not state conclusions as fact.
-- The script is a first draft that the team will refine, but it should be close enough to shoot as-is.`;
+- The script is a first draft that Peter and the team will refine, but it should be close enough to shoot as-is.
+
+FINAL SELF-CHECK before outputting — answer these silently:
+- Is the script body between 1,200 and 1,500 words? If over, cut.
+- Did I repeat any major point? If yes, consolidate.
+- Did I invent any specific claim not in the source? If yes, remove or [VERIFY].
+- Did I drift into tangential stories? If yes, cut and return to the source story.`;
 
 module.exports = MFS_SYSTEM_PROMPT;

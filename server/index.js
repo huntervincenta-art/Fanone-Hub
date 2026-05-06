@@ -1822,7 +1822,7 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
       },
       {
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 16000,
+        max_tokens: 3000,
         system: MFS_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }
@@ -1942,7 +1942,7 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
       },
       {
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 16000,
+        max_tokens: 3000,
         system: MFS_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }
