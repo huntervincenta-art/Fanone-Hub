@@ -221,13 +221,25 @@ function StorySuggestionsCarousel({ suggestions, passphrase, userName }) {
             return (
               <div className="story-card" key={story.id || i}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span
-                    className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}
-                    title={item.category === 'Law Enforcement' ? 'Law Enforcement — police, courts, DOJ, FBI, crime, civil rights' : 'Political Commentary — politics, elections, policy, Congress, White House'}
-                  >
-                    {item.category === 'Law Enforcement' ? 'Law Enforcement' : 'Political Commentary'}
-                  </span>
-                  <div className="story-card-score" title={`Lane Fit Score: ${item.score}/100 — based on Fanone's proven high-performing categories`}>
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span
+                      className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}
+                      title={item.category === 'Law Enforcement' ? 'Law Enforcement — police, courts, DOJ, FBI, crime, civil rights' : 'Political Commentary — politics, elections, policy, Congress, White House'}
+                    >
+                      {item.category === 'Law Enforcement' ? 'Law Enforcement' : 'Political Commentary'}
+                    </span>
+                    {item.primaryLane && (
+                      <span className="story-card-lane-pill" title={`Primary editorial lane`}>
+                        {item.primaryLane}
+                      </span>
+                    )}
+                    {item.mikeWorthy === false && (
+                      <span className="story-card-mike-unworthy" title={item.mikeWorthyReasoning || 'Not recommended for MFS'}>
+                        Not Mike-worthy
+                      </span>
+                    )}
+                  </div>
+                  <div className="story-card-score" title={`Lane Fit: ${item.score}/100`}>
                     <span
                       className="story-card-score-dot"
                       style={{ background: opp.color || '#9ca3af' }}
@@ -329,20 +341,28 @@ function FeaturedStoryCard({ item, passphrase, userName }) {
   return (
     <div className="featured-story">
       <div className="featured-story-top">
-        <span
-          className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}
-          title={item.category === 'Law Enforcement' ? 'Law Enforcement — police, courts, DOJ, FBI, crime, civil rights' : 'Political Commentary — politics, elections, policy, Congress, White House'}
-        >
-          {item.category === 'Law Enforcement' ? 'Law Enforcement' : 'Political Commentary'}
-        </span>
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span
+            className={`story-card-category story-card-category--${item.category === 'Law Enforcement' ? 'le' : 'pc'}`}
+            title={item.category === 'Law Enforcement' ? 'Law Enforcement — police, courts, DOJ, FBI, crime, civil rights' : 'Political Commentary — politics, elections, policy, Congress, White House'}
+          >
+            {item.category === 'Law Enforcement' ? 'Law Enforcement' : 'Political Commentary'}
+          </span>
+          {item.primaryLane && (
+            <span className="story-card-lane-pill">{item.primaryLane}</span>
+          )}
+        </div>
         <span className="featured-story-rank">TOP PICK</span>
       </div>
 
       <div className="featured-story-body">
         <div className="featured-story-gauges">
-          <OpportunityDonut score={score} color={opp.color} label={opp.label} />
+          <OpportunityDonut score={score} color={opp.color} label={opp.label} gaugeLabel="LANE FIT" />
           {saturationScore != null && (
-            <SaturationGauge saturationScore={saturationScore} />
+            <div className="saturation-secondary">
+              <span className="saturation-secondary-label">Saturation</span>
+              <span className="saturation-secondary-value">{saturationScore}/100</span>
+            </div>
           )}
         </div>
 

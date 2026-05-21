@@ -22,7 +22,7 @@ const { analyzeSubject: tpAnalyzeSubject } = require('./routes/topicPulse');
 const MFS_SYSTEM_PROMPT = require('./mfs-system-prompt');
 const { classifyUrl, extractYouTubeId } = require('./utils/urlType');
 const { fetchTranscript: fetchYouTubeTranscript } = require('./utils/youtubeTranscript');
-const { scoreHeadlineForFanone, fanoneOpportunityBucket, classifyCategory } = require('./utils/fanone-shared');
+const { scoreHeadlineForFanone, fanoneOpportunityBucket, classifyCategory, twoPassScore, checkMikeWorthy } = require('./utils/fanone-shared');
 const { GOOGLE_NEWS_HEADERS } = require('./utils/news-headers');
 
 // Shared HTTPS agent with connection pooling to prevent ENOBUFS from too many open sockets
@@ -56,6 +56,12 @@ function getPersonalTopic(name) {
 }
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const YOUTUBE_API_KEY   = process.env.YOUTUBE_API_KEY;
+
+// Strip em dashes and en dashes from script output (teleprompter compat)
+function stripDashes(text) {
+  if (!text) return text;
+  return text.replace(/\u2014/g, '. ').replace(/\u2013/g, '. ');
+}
 const DATA_START_ROW = 3;
 const TAB = 'Stories';
 const TRAINING_SHEET_ID = '1HlMZzmbAqIFjpqy9Hhp2TKBu_3vDIRqkxxeKGBmSRVQ';
@@ -79,67 +85,37 @@ const RECOMMENDED_STORY_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 let recommendedStoryCache = null; // { data, expiresAt }
 let recommendedStoryInflight = null; // shared promise during cold builds
 
-// ── Approved US publishers (+ BBC as explicit international exception) ────────
-// Edit this list to add/remove publishers. Used for:
-//   1. Outlet badge matching (matchApprovedOutlet)
-//   2. INTERNATIONAL tagging — any source NOT in this list gets an INTERNATIONAL tag
+// ── Approved publishers — tiered per FANONE_EDITORIAL.md Section 6 ────────────
+// Tier 1: push to top of feed, +10 scoring bonus.  Tier 2: +5 bonus.
 // BBC is the ONE approved international outlet — no INTERNATIONAL badge.
+// All other international sources are removed from the feed.
 const APPROVED_SOURCE_NEEDLES = [
-  // Major wire services / broadcast networks
-  { name: 'AP',              needles: ['apnews', 'associated press', 'ap news'] },
-  { name: 'Reuters',         needles: ['reuters'] },
-  { name: 'NBC News',        needles: ['nbcnews', 'nbc news'] },
-  { name: 'CBS News',        needles: ['cbsnews', 'cbs news'] },
-  { name: 'ABC News',        needles: ['abcnews.go.com', 'abcnews', 'abc news'] },
-  { name: 'CNN',             needles: ['cnn.com', 'cnn'] },
-  { name: 'MSNBC',           needles: ['msnbc'] },
-  { name: 'Fox News',        needles: ['foxnews', 'fox news'] },
-  { name: 'NPR',             needles: ['npr.org', 'npr'] },
-  { name: 'PBS',             needles: ['pbs.org', 'pbs'] },
-  // Major US newspapers
-  { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'] },
-  { name: 'Washington Post', needles: ['washingtonpost', 'washington post'] },
-  { name: 'The Wall Street Journal', needles: ['wsj.com', 'wsj', 'wall street journal'] },
-  { name: 'USA Today',       needles: ['usatoday', 'usa today'] },
-  { name: 'LA Times',        needles: ['latimes', 'los angeles times', 'la times'] },
-  // Political / policy outlets
-  { name: 'Politico',        needles: ['politico'] },
-  { name: 'The Hill',        needles: ['thehill.com', 'thehill', 'the hill'] },
-  { name: 'Axios',           needles: ['axios'] },
-  { name: 'Bloomberg',       needles: ['bloomberg'] },
-  { name: 'Newsweek',        needles: ['newsweek'] },
-  { name: 'TIME',            needles: ['time.com', 'time magazine'] },
-  // Magazines / longform
-  { name: 'The Atlantic',    needles: ['theatlantic', 'the atlantic', 'atlantic'] },
-  { name: 'The New Yorker',  needles: ['newyorker', 'new yorker'] },
-  { name: 'Mother Jones',    needles: ['motherjones', 'mother jones'] },
-  { name: 'Vox',             needles: ['vox.com', 'vox'] },
-  { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'] },
-  { name: 'HuffPost',        needles: ['huffpost', 'huffington'] },
-  { name: 'ProPublica',      needles: ['propublica'] },
-  { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'] },
-  { name: 'Slate',           needles: ['slate.com', 'slate'] },
-  { name: 'Rolling Stone',   needles: ['rollingstone', 'rolling stone'] },
-  { name: 'Salon',           needles: ['salon.com'] },
-  { name: 'The Nation',      needles: ['thenation', 'the nation'] },
-  // Progressive / partisan (still legitimate news)
-  { name: 'Talking Points Memo', needles: ['talkingpointsmemo', 'talking points memo', 'tpm'] },
-  { name: 'Raw Story',       needles: ['rawstory', 'raw story'] },
-  { name: 'Mediaite',        needles: ['mediaite'] },
-  { name: 'Daily Kos',       needles: ['dailykos', 'daily kos'] },
-  // Business / financial
-  { name: 'CNBC',            needles: ['cnbc.com', 'cnbc'] },
-  { name: 'MarketWatch',     needles: ['marketwatch'] },
-  { name: 'Business Insider', needles: ['businessinsider', 'business insider'] },
-  // Legal / niche
-  { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'] },
-  { name: 'Foreign Policy',  needles: ['foreignpolicy', 'foreign policy'] },
-  // Military / law enforcement
-  { name: 'Stars and Stripes', needles: ['stripes.com', 'stars and stripes'] },
-  { name: 'Military Times',  needles: ['militarytimes', 'military times'] },
-  { name: 'The Marshall Project', needles: ['themarshallproject', 'marshall project'] },
-  // Approved international exception — BBC gets no INTERNATIONAL badge
-  { name: 'BBC',             needles: ['bbc.com', 'bbc.co.uk', 'bbc'], international: false },
+  // ── Tier 1 (push to top — NYT first per editorial directive) ──
+  { name: 'New York Times',  needles: ['nytimes', 'new york times', 'nyt'], tier: 1 },
+  { name: 'Reuters',         needles: ['reuters'], tier: 1 },
+  { name: 'AP',              needles: ['apnews', 'associated press', 'ap news'], tier: 1 },
+  { name: 'Washington Post', needles: ['washingtonpost', 'washington post'], tier: 1 },
+  { name: 'Politico',        needles: ['politico'], tier: 1 },
+  { name: 'ProPublica',      needles: ['propublica'], tier: 1 },
+  { name: 'The Hill',        needles: ['thehill.com', 'thehill', 'the hill'], tier: 1 },
+  { name: 'Lawfare',         needles: ['lawfaremedia', 'lawfare'], tier: 1 },
+  // ── Tier 2 ──
+  { name: 'NBC News',        needles: ['nbcnews', 'nbc news'], tier: 2 },
+  { name: 'CBS News',        needles: ['cbsnews', 'cbs news'], tier: 2 },
+  { name: 'ABC News',        needles: ['abcnews.go.com', 'abcnews', 'abc news'], tier: 2 },
+  { name: 'CNN',             needles: ['cnn.com', 'cnn'], tier: 2 },
+  { name: 'MSNBC',           needles: ['msnbc'], tier: 2 },
+  { name: 'NPR',             needles: ['npr.org', 'npr'], tier: 2 },
+  { name: 'PBS',             needles: ['pbs.org', 'pbs'], tier: 2 },
+  { name: 'TIME',            needles: ['time.com', 'time magazine'], tier: 2 },
+  { name: 'Bloomberg',       needles: ['bloomberg'], tier: 2 },
+  { name: 'Axios',           needles: ['axios'], tier: 2 },
+  { name: 'The Atlantic',    needles: ['theatlantic', 'the atlantic', 'atlantic'], tier: 2 },
+  { name: 'The Intercept',   needles: ['theintercept', 'the intercept', 'intercept'], tier: 2 },
+  { name: 'The Daily Beast', needles: ['thedailybeast', 'daily beast'], tier: 2 },
+  { name: 'The Guardian',    needles: ['theguardian', 'the guardian', 'guardian'], tier: 2 },
+  // ── International (only BBC) ──
+  { name: 'BBC',             needles: ['bbc.com', 'bbc.co.uk', 'bbc'], tier: 2, international: false },
 ];
 
 // Names of outlets in APPROVED_SOURCE_NEEDLES that are international but approved.
@@ -172,7 +148,7 @@ function matchApprovedOutlet(article) {
   if (!hay) return null;
   for (const outlet of APPROVED_SOURCE_NEEDLES) {
     for (const needle of outlet.needles) {
-      if (hay.includes(needle)) return outlet.name;
+      if (hay.includes(needle)) return { name: outlet.name, tier: outlet.tier || 2 };
     }
   }
   return null;
@@ -1243,22 +1219,43 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
       }
 
       const tagged = pool.map(a => {
-        const outlet = matchApprovedOutlet(a);
-        return { ...a, outlet };
+        const outletMatch = matchApprovedOutlet(a);
+        return { ...a, outlet: outletMatch ? outletMatch.name : null, outletTier: outletMatch ? outletMatch.tier : null };
       });
 
-      const scored = tagged.map(article => {
-        const { score: baseScore, matched, urgency, category } = scoreHeadlineForFanone(article);
-        const finalScore = Math.max(0, Math.min(100, baseScore + (article.outlet ? 5 : 0)));
-        return { article, score: finalScore, matched, urgency, category };
-      });
+      // Two-pass scoring: keyword + AI hybrid
+      const scored = await Promise.all(tagged.map(async (article) => {
+        const twoPass = await twoPassScore(article, ANTHROPIC_API_KEY);
+        // Tier 1 sources get +10 bonus, Tier 2 get +5
+        const tierBonus = article.outletTier === 1 ? 10 : article.outlet ? 5 : 0;
+        const laneFit = Math.max(0, Math.min(100, twoPass.laneFit + tierBonus));
+        return {
+          article,
+          score: laneFit,
+          laneFit,
+          primaryLane: twoPass.primaryLane,
+          aiReasoning: twoPass.aiReasoning,
+          matched: twoPass.matched,
+          urgency: twoPass.urgency,
+          category: twoPass.category,
+        };
+      }));
 
       scored.sort((a, b) => b.score - a.score);
 
-      // Take top 9 stories for the carousel
-      const topPicks = scored.slice(0, 9);
+      // Filter: stories with laneFit < 40 excluded from recommendations
+      const recommendable = scored.filter(s => s.laneFit >= 40);
+      const topPicks = (recommendable.length >= 3 ? recommendable : scored).slice(0, 9);
 
-      console.log('[recommended-story] top 9:', topPicks.map(s => `${s.score}|${s.urgency}| ${s.article.headline}`));
+      console.log('[recommended-story] top 9:', topPicks.map(s => `${s.score}|${s.primaryLane || '-'}|${s.urgency}| ${s.article.headline}`));
+
+      // Mike-worthy gate on top 3
+      const worthyResults = await Promise.all(
+        topPicks.slice(0, 3).map(pick =>
+          checkMikeWorthy(pick.article.headline, pick.article.description || '', pick.article.url, ANTHROPIC_API_KEY)
+            .catch(() => ({ mikeWorthy: true, reasoning: 'Gate error — defaulting' }))
+        )
+      );
 
       // Generate angle lines for top 3 in parallel, rest get empty angles
       const anglePromises = topPicks.slice(0, 3).map(pick =>
@@ -1269,6 +1266,7 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
 
       const suggestions = topPicks.map((pick, i) => {
         const angleLine = i < 3 ? angles[i] : '';
+        const worthy = i < 3 ? worthyResults[i] : { mikeWorthy: true, reasoning: '' };
         const opportunity = fanoneOpportunityBucket(pick.score);
         return {
           article: {
@@ -1280,29 +1278,37 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
             publishedAt: pick.article.publishedAt || '',
             angle:       angleLine,
           },
-          score:      pick.score,
-          matched:    pick.matched,
-          urgency:    pick.urgency,
-          category:   pick.category || 'Political Commentary',
+          score:       pick.score,
+          laneFit:     pick.laneFit,
+          primaryLane: pick.primaryLane || null,
+          mikeWorthy:  worthy.mikeWorthy !== false,
+          mikeWorthyReasoning: worthy.reasoning || '',
+          matched:     pick.matched,
+          urgency:     pick.urgency,
+          category:    pick.category || 'Political Commentary',
           opportunity,
-          lifecycle:  opportunity.level === 'high' ? 'Rising'
-                    : opportunity.level === 'moderate' ? 'Peak'
-                    : 'Off-lane',
+          lifecycle:   opportunity.level === 'high' ? 'Rising'
+                     : opportunity.level === 'moderate' ? 'Peak'
+                     : 'Off-lane',
         };
       });
 
-      // Top pick for back-compat
-      const pick = suggestions[0];
+      // Surface the top Mike-worthy story as featured
+      const worthySuggestions = suggestions.filter(s => s.mikeWorthy);
+      const featured = worthySuggestions.length > 0 ? worthySuggestions[0] : suggestions[0];
+
       const data = {
-        article:    pick.article,
-        score:      pick.score,
-        matched:    pick.matched,
-        urgency:    pick.urgency,
-        category:   pick.category || 'Political Commentary',
-        opportunity: pick.opportunity,
+        article:    featured.article,
+        score:      featured.score,
+        laneFit:    featured.laneFit,
+        primaryLane: featured.primaryLane,
+        matched:    featured.matched,
+        urgency:    featured.urgency,
+        category:   featured.category || 'Political Commentary',
+        opportunity: featured.opportunity,
         analysis: {
-          saturation_score: 100 - pick.score,
-          best_angle:       pick.article.angle,
+          saturation_score: 100 - featured.score,
+          best_angle:       featured.article.angle,
           recommendation:   '',
           dominant_framing: '',
           trends:           null,
@@ -1310,11 +1316,10 @@ app.get('/api/recommended-story', requireAuth, async (req, res) => {
           avg_views_per_video: 0,
           upload_velocity:     0,
         },
-        lifecycle: pick.lifecycle,
+        lifecycle: featured.lifecycle,
         empty: false,
         scored_at: new Date().toISOString(),
         candidates_considered: scored.length,
-        // New: all story suggestions for carousel
         suggestions,
       };
 
@@ -1835,7 +1840,7 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    const script = stripDashes(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
     let savedId = null;
@@ -1890,12 +1895,9 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
       articleSource = 'YouTube';
       articleTitle = url;
     } else {
-      // article — fetch page and extract text
-      try {
-        const pageRes = await httpsRequest(url, { timeout: 20000 });
-        const html = typeof pageRes.body === 'string' ? pageRes.body : JSON.stringify(pageRes.body);
-        // Strip HTML tags, scripts, styles to get plain text
-        sourceText = html
+      // article — fetch page and extract text, with archive.ph fallback
+      const extractText = (html) => {
+        return html
           .replace(/<script[\s\S]*?<\/script>/gi, '')
           .replace(/<style[\s\S]*?<\/style>/gi, '')
           .replace(/<[^>]+>/g, ' ')
@@ -1907,14 +1909,62 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
           .replace(/&#39;/g, "'")
           .replace(/\s{2,}/g, ' ')
           .trim();
-        if (!sourceText || sourceText.length < 100) {
-          return res.status(400).json({ error: 'Could not fetch article text from this URL.' });
+      };
+      let archiveFallbackUsed = false;
+      try {
+        const pageRes = await httpsRequest(url, { timeout: 20000 });
+        const html = typeof pageRes.body === 'string' ? pageRes.body : JSON.stringify(pageRes.body);
+        sourceText = extractText(html);
+
+        // If text is too short (paywall / video-only), try archive.ph fallback
+        if (!sourceText || sourceText.length < 300) {
+          console.log('[generate-script-from-url] primary fetch too short (' + (sourceText || '').length + ' chars), trying archive.ph...');
+          try {
+            const archiveUrl = `https://archive.ph/newest/${encodeURIComponent(url)}`;
+            const archiveRes = await httpsRequest(archiveUrl, { timeout: 20000 });
+            const archiveHtml = typeof archiveRes.body === 'string' ? archiveRes.body : JSON.stringify(archiveRes.body);
+            const archiveText = extractText(archiveHtml);
+            if (archiveText && archiveText.length >= 300) {
+              sourceText = archiveText;
+              archiveFallbackUsed = true;
+              console.log('[generate-script-from-url] archive.ph fallback succeeded (' + archiveText.length + ' chars)');
+            }
+          } catch (archiveErr) {
+            console.warn('[generate-script-from-url] archive.ph fallback failed:', archiveErr.message);
+          }
+        }
+
+        if (!sourceText || sourceText.length < 300) {
+          return res.status(400).json({
+            error: 'video_or_unparseable',
+            message: 'This page appears to be video-only or behind a paywall we cannot bypass. Paste a video URL (YouTube preferred) and we\'ll use that instead.',
+          });
         }
         // Truncate to ~12000 chars to stay within Claude context limits
         if (sourceText.length > 12000) sourceText = sourceText.slice(0, 12000);
       } catch (fetchErr) {
         console.error('[generate-script-from-url] article fetch error:', fetchErr.message);
-        return res.status(400).json({ error: 'Could not fetch article text from this URL.' });
+        // Try archive.ph as last resort on network errors
+        try {
+          const archiveUrl = `https://archive.ph/newest/${encodeURIComponent(url)}`;
+          const archiveRes = await httpsRequest(archiveUrl, { timeout: 20000 });
+          const archiveHtml = typeof archiveRes.body === 'string' ? archiveRes.body : JSON.stringify(archiveRes.body);
+          sourceText = extractText(archiveHtml);
+          if (sourceText && sourceText.length >= 300) {
+            archiveFallbackUsed = true;
+            if (sourceText.length > 12000) sourceText = sourceText.slice(0, 12000);
+          } else {
+            return res.status(400).json({
+              error: 'video_or_unparseable',
+              message: 'Could not fetch article text from this URL or its archive. Paste a video URL (YouTube preferred) and we\'ll use that instead.',
+            });
+          }
+        } catch (archiveErr2) {
+          return res.status(400).json({
+            error: 'video_or_unparseable',
+            message: 'Could not fetch article text from this URL. Paste a video URL (YouTube preferred) and we\'ll use that instead.',
+          });
+        }
       }
       try { articleSource = new URL(url).hostname.replace(/^www\./, ''); } catch { articleSource = url; }
       articleTitle = url;
@@ -1955,7 +2005,7 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    const script = stripDashes(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
     let savedId = null;
@@ -1974,7 +2024,7 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
       console.error('[generate-script-from-url] failed to persist script:', saveErr.message);
     }
 
-    res.json({ script, id: savedId });
+    res.json({ script, id: savedId, archiveFallback: archiveFallbackUsed || false });
   } catch (err) {
     console.error('POST /api/fanone/generate-script-from-url error:', err.message);
     res.status(500).json({ error: err.message });
@@ -2045,7 +2095,7 @@ app.post('/api/fanone-hub/topic-script', requireAuth, async (req, res) => {
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    const script = stripDashes(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
     let savedId = null;
@@ -2203,7 +2253,7 @@ app.post('/api/scripts/:id/regenerate', requireAuth, async (req, res) => {
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const script = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    const script = stripDashes(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
     existing.previousVersion = existing.generatedScript;
@@ -2805,7 +2855,8 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
 
     const enriched = await Promise.all(articles.map(async (article) => {
       // Outlet matching + INTERNATIONAL tagging
-      const outlet = matchApprovedOutlet({ url: article.link, source: article.sourceName, sourceName: article.sourceName });
+      const outletMatch = matchApprovedOutlet({ url: article.link, source: article.sourceName, sourceName: article.sourceName });
+      const outlet = outletMatch ? outletMatch.name : null;
       // If outlet is recognized, it's approved (incl BBC). If not, tag as INTERNATIONAL.
       const isInternational = !outlet;
       // Category from scoring

@@ -7929,3 +7929,374 @@ details[open] .notif-all-topics-summary::before {
     flex-direction: column;
   }
 }
+
+/* ── Lane pill + Mike-worthy badge (Dashboard story cards) ──────────────── */
+.story-card-lane-pill {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  background: rgba(79, 135, 247, 0.15);
+  color: #4f87f7;
+  white-space: nowrap;
+}
+
+html[data-theme="light"] .story-card-lane-pill {
+  background: rgba(79, 135, 247, 0.12);
+  color: #2563eb;
+}
+
+.story-card-mike-unworthy {
+  display: inline-block;
+  font-size: 0.58rem;
+  font-weight: 600;
+  padding: 0.12rem 0.35rem;
+  border-radius: 3px;
+  background: rgba(196, 30, 58, 0.12);
+  color: var(--danger);
+  cursor: help;
+}
+
+.saturation-secondary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.5rem;
+}
+
+.saturation-secondary-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.saturation-secondary-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Card-row layout for StoryFeed (replaces hub-table)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.hub-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.hub-card-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.hub-card {
+  display: grid;
+  grid-template-columns: 100px 1fr 100px 120px;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--host-color, transparent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: background 0.15s;
+}
+
+.hub-card:hover {
+  background: var(--surface-raised);
+}
+
+/* Card states */
+@keyframes hub-card-flash {
+  0%   { background: rgba(74, 222, 128, 0.18); }
+  100% { background: var(--surface); }
+}
+
+.hub-card--new {
+  animation: hub-card-flash 1.2s ease-out forwards;
+}
+
+.hub-card--flagged {
+  border-left-color: rgba(251, 191, 36, 0.7);
+  background: rgba(255, 193, 7, 0.06);
+}
+
+.hub-card--duplicate {
+  border-left-color: rgba(251, 191, 36, 0.5);
+  opacity: 0.7;
+}
+
+.hub-card--done {
+  background: rgba(74, 222, 128, 0.06);
+}
+
+.hub-card--alerted {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.hub-card--editing {
+  background: rgba(79, 135, 247, 0.06);
+}
+
+html[data-theme="light"] .hub-card {
+  background: var(--surface);
+}
+
+html[data-theme="light"] .hub-card:hover {
+  background: var(--surface-raised);
+}
+
+html[data-theme="light"] .hub-card--flagged {
+  background: rgba(255, 193, 7, 0.1);
+}
+
+html[data-theme="light"] .hub-card--done {
+  background: rgba(22, 163, 74, 0.06);
+}
+
+/* Date column */
+.hub-card-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-top: 0.1rem;
+}
+
+.hub-card-date-day {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.hub-card-date-time {
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Story column */
+.hub-card-story {
+  min-width: 0;
+}
+
+.hub-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.hub-card-headline {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+a.hub-card-headline:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.hub-card-angle {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.hub-card-angle-label {
+  font-weight: 700;
+  color: var(--success);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.hub-card-comments-text {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Pill badges */
+.hub-pill {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.12rem 0.4rem;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.hub-pill--breaking {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.hub-pill--flagged {
+  background: rgba(251, 191, 36, 0.15);
+  color: #d97706;
+}
+
+.hub-pill--working {
+  background: rgba(251, 191, 36, 0.15);
+  color: #d97706;
+}
+
+.hub-pill--done {
+  background: rgba(74, 222, 128, 0.15);
+  color: #16a34a;
+}
+
+.hub-pill--duplicate {
+  background: rgba(251, 191, 36, 0.12);
+  color: #b45309;
+}
+
+/* Host column */
+.hub-card-host {
+  display: flex;
+  align-items: center;
+  padding-top: 0.1rem;
+}
+
+/* Actions column */
+.hub-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+/* Edit form below card */
+.hub-card-edit {
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 1rem;
+  background: var(--surface);
+  margin-top: -0.5rem;
+}
+
+/* Comment thread below card */
+.hub-card-comment-thread {
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--surface);
+  margin-top: -0.5rem;
+  padding: 0.5rem 1rem;
+}
+
+.hub-card-comment-thread .hub-comment-thread {
+  border: none;
+  padding: 0;
+}
+
+/* ── Overflow menu ──────────────────────────── */
+.hub-overflow-wrap {
+  position: relative;
+}
+
+.hub-overflow-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.5rem;
+  line-height: 1;
+  letter-spacing: 0.15em;
+  transition: background 0.15s, color 0.15s;
+}
+
+.hub-overflow-btn:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.hub-overflow-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 100;
+  min-width: 170px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 0.25rem 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hub-overflow-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.hub-overflow-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+html[data-theme="light"] .hub-overflow-item:hover {
+  background: rgba(0,0,0,0.04);
+}
+
+.hub-overflow-item--danger {
+  color: var(--danger);
+}
+
+.hub-overflow-item--muted {
+  color: var(--muted);
+  cursor: default;
+  font-style: italic;
+}
+
+/* ── Mobile: stack card columns vertically ─── */
+@media (max-width: 700px) {
+  .hub-card {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+    padding: 0.65rem 0.75rem;
+  }
+
+  .hub-card-date {
+    flex-direction: row;
+    gap: 0.5rem;
+    align-items: baseline;
+  }
+
+  .hub-card-actions {
+    justify-content: flex-start;
+  }
+
+  .hub-overflow-menu {
+    right: auto;
+    left: 0;
+  }
+}

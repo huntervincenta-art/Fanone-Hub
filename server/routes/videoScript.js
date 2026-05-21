@@ -260,7 +260,9 @@ router.post('/video-script', async (req, res) => {
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const rawText = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    let rawText = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
+    // Strip em dashes and en dashes (teleprompter compat)
+    rawText = rawText.replace(/\u2014/g, '. ').replace(/\u2013/g, '. ');
     if (!rawText) {
       return res.status(502).json({ error: 'Empty response from Anthropic' });
     }

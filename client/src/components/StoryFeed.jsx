@@ -23,6 +23,59 @@ const ChevronIcon = ({ open }) => (
 
 const ADMIN_USER = 'Hunter';
 
+function OverflowMenu({ story, userName, isAdmin, onEdit, onFlag, onDuplicate, onUnduplicate, onWorking, onDone, onApprove, onDecline, onDelete, onAlert, alertingIds, alertedIds, onWorkingOnIt, workingOnIds, trainedStoryIds, onTrainAI, editing }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className="hub-overflow-wrap" ref={ref}>
+      <button className="hub-overflow-btn" onClick={() => setOpen(o => !o)} aria-label="More actions">···</button>
+      {open && (
+        <div className="hub-overflow-menu">
+          <button className="hub-overflow-item" onClick={() => { onEdit(); setOpen(false); }}>{editing ? 'Cancel Edit' : 'Edit'}</button>
+          <button className="hub-overflow-item" onClick={() => { onFlag(); setOpen(false); }}>{story.flagged ? 'Unflag' : 'Flag'}</button>
+          {story.duplicate
+            ? <button className="hub-overflow-item" onClick={() => { onUnduplicate(); setOpen(false); }}>Remove Duplicate</button>
+            : <button className="hub-overflow-item" onClick={() => { onDuplicate(); setOpen(false); }}>Flag as Duplicate</button>
+          }
+          {isAdmin && (
+            <>
+              <button className="hub-overflow-item" onClick={() => { onWorking(); setOpen(false); }}>{story.working ? 'Undo Working' : 'Mark as Working'}</button>
+              <button className="hub-overflow-item" onClick={() => { onDone(); setOpen(false); }}>{story.done ? 'Undo Done' : 'Mark as Done'}</button>
+              {!story.flagged && (
+                <>
+                  <button className="hub-overflow-item" onClick={() => { onApprove(); setOpen(false); }}>Approve</button>
+                  <button className="hub-overflow-item hub-overflow-item--danger" onClick={() => { onDecline(); setOpen(false); }}>Decline</button>
+                </>
+              )}
+              {story.alerted && (
+                <button className="hub-overflow-item" onClick={() => { onWorkingOnIt(); setOpen(false); }} disabled={workingOnIds.has(story.id)}>Working on it</button>
+              )}
+              {trainedStoryIds.has(story.id)
+                ? <span className="hub-overflow-item hub-overflow-item--muted">AI Trained</span>
+                : <button className="hub-overflow-item" onClick={() => { onTrainAI(); setOpen(false); }}>Train AI</button>
+              }
+            </>
+          )}
+          {story.host === userName && (
+            <button className="hub-overflow-item" onClick={() => { onAlert(); setOpen(false); }} disabled={alertingIds.has(story.id) || alertedIds.has(story.id) || story.alerted}>
+              {alertedIds.has(story.id) || story.alerted ? 'Alert Sent' : 'Alert Hunter'}
+            </button>
+          )}
+          <button className="hub-overflow-item hub-overflow-item--danger" onClick={() => { onDelete(); setOpen(false); }}>Delete</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function isURL(str) {
   try { return Boolean(new URL(str)); } catch { return false; }
 }
@@ -91,13 +144,19 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
   const [scriptAngleNotes, setScriptAngleNotes] = useState('');
   const [generatingScript, setGeneratingScript] = useState(false);
   const [scriptError, setScriptError] = useState('');
+  const [scriptVideoFallback, setScriptVideoFallback] = useState(false);
+  const [scriptVideoUrl, setScriptVideoUrl] = useState('');
+  const [scriptArchiveNote, setScriptArchiveNote] = useState(false);
 
-  const openScriptModal = (story) => { setScriptModalStory(story); setScriptAngleNotes(''); setScriptError(''); };
-  const closeScriptModal = () => { if (generatingScript) return; setScriptModalStory(null); setScriptAngleNotes(''); setScriptError(''); };
-  const handleGenerateScript = async () => {
+  const openScriptModal = (story) => { setScriptModalStory(story); setScriptAngleNotes(''); setScriptError(''); setScriptVideoFallback(false); setScriptVideoUrl(''); setScriptArchiveNote(false); };
+  const closeScriptModal = () => { if (generatingScript) return; setScriptModalStory(null); setScriptAngleNotes(''); setScriptError(''); setScriptVideoFallback(false); setScriptVideoUrl(''); setScriptArchiveNote(false); };
+  const handleGenerateScript = async (overrideUrl) => {
     if (!scriptModalStory) return;
     setGeneratingScript(true);
     setScriptError('');
+    setScriptVideoFallback(false);
+    setScriptArchiveNote(false);
+    const targetUrl = overrideUrl || scriptModalStory.link;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000);
     try {
@@ -105,7 +164,7 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-passphrase': passphrase },
         body: JSON.stringify({
-          url: scriptModalStory.link,
+          url: targetUrl,
           angleNotes: scriptAngleNotes.trim(),
           storyId: scriptModalStory.id,
           user: userName,
@@ -113,12 +172,21 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
         signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Failed to generate script');
+      if (!res.ok) {
+        if (data.error === 'video_or_unparseable') {
+          setScriptVideoFallback(true);
+          setScriptError(data.message || 'This page appears to be video-only or unreachable. Paste a video URL below.');
+          return;
+        }
+        throw new Error(data.error || 'Failed to generate script');
+      }
+      if (data.archiveFallback) setScriptArchiveNote(true);
       navigate('/script-result', {
         state: {
           script: data.script,
           articleTitle: scriptModalStory.headline || '',
           articleSource: scriptModalStory.link || '',
+          archiveFallback: data.archiveFallback || false,
         },
       });
     } catch (err) {
@@ -554,15 +622,13 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
     return <div className="alert alert-error" style={{ margin: '1.5rem' }}>{error}</div>;
   }
 
-  // ── Comment thread row renderer ────────────────────
-  const renderCommentThread = (storyId, colSpan) => {
+  // ── Comment thread renderer ────────────────────
+  const renderCommentThread = (storyId) => {
     if (!expandedComments.has(storyId)) return null;
     const comments = commentsData[storyId];
     const input = commentInputs[storyId] || '';
     const submitting = commentSubmitting.has(storyId);
     return (
-      <tr className="hub-row-comments">
-        <td colSpan={colSpan}>
           <div className="hub-comment-thread">
             {!comments ? (
               <div className="hub-comment-loading">Loading…</div>
@@ -610,8 +676,6 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
               </button>
             </div>
           </div>
-        </td>
-      </tr>
     );
   };
 
@@ -653,7 +717,7 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
         )}
       </div>
 
-      {/* ── Stories table ── */}
+      {/* ── Stories (card-row layout) ── */}
       {hubTab === 'stories' && <div className="hub-section">
         <div className="hub-section-header">
           <div className="hub-section-header-left">
@@ -668,233 +732,180 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
           </div>
         </div>
 
-        <div className="hub-table-wrap">
-          <table className="hub-table">
-            <thead>
-              <tr>
-                <th className="hub-th-date">Date</th>
-                <th className="hub-th-title">Title</th>
-                <th className="hub-th-host">Host</th>
-                <th className="hub-th-actions"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {claimed.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="hub-table-empty">
-                    {loading ? 'Loading…' : searchQuery ? 'No stories match your search.' : 'No stories yet.'}
-                  </td>
-                </tr>
-              ) : claimed.map((story, idx) => (
-                <React.Fragment key={story.id}>
-                  <tr
-                    className={`hub-row${idx % 2 === 1 ? ' hub-row--alt' : ''}${story.flagged ? ' hub-row--flagged' : ''}${editingId === story.id ? ' hub-row--editing' : ''}${newStoryIds.has(story.id) ? ' hub-row--new' : ''}${story.alerted && userName === ADMIN_USER ? ' hub-row--alerted' : ''}${story.duplicate ? ' hub-row--duplicate' : ''}${story.done ? ' hub-row--done' : ''}`}
-                    style={getHostColor(story.host) ? { '--host-color': getHostColor(story.host) } : undefined}
-                  >
-                    <td className="hub-cell-date">{story.date || '—'}</td>
-                    <td className="hub-cell-title">
-                      <div className="hub-title-wrap">
-                        {story.breaking && <span className="hub-badge hub-badge--breaking">Breaking</span>}
-                        {story.flagged && <span className="hub-badge hub-badge--flagged">⚑</span>}
-                        {story.thumbnailUrl && toImageSrc(story.thumbnailUrl) && (
-                          <button
-                            className="hub-thumb-toggle"
-                            onClick={() => toggleThumbnail(story.id)}
-                            title={expandedThumbnails.has(story.id) ? 'Collapse thumbnail' : 'Expand thumbnail'}
-                          >
-                            <ChevronIcon open={expandedThumbnails.has(story.id)} />
-                          </button>
-                        )}
-                        {story.link && isURL(story.link)
-                          ? <a href={story.link} target="_blank" rel="noopener noreferrer" className="hub-title-link">{story.headline}</a>
-                          : <span className="hub-title-text">{story.headline}</span>
-                        }
-                        {story.duplicate && <span className="hub-duplicate-badge">DUPLICATE</span>}
-                      </div>
-                      {stripAiContent(story.additionalLinks) && (
-                        <div className="hub-comments">{stripAiContent(story.additionalLinks)}</div>
+        <div className="hub-card-list">
+          {claimed.length === 0 ? (
+            <div className="hub-card-empty">
+              {loading ? 'Loading…' : searchQuery ? 'No stories match your search.' : 'No stories yet.'}
+            </div>
+          ) : claimed.map((story) => (
+            <React.Fragment key={story.id}>
+              <div
+                className={`hub-card${story.flagged ? ' hub-card--flagged' : ''}${editingId === story.id ? ' hub-card--editing' : ''}${newStoryIds.has(story.id) ? ' hub-card--new' : ''}${story.alerted && userName === ADMIN_USER ? ' hub-card--alerted' : ''}${story.duplicate ? ' hub-card--duplicate' : ''}${story.done ? ' hub-card--done' : ''}`}
+                style={{ '--host-color': getHostColor(story.host) || 'transparent' }}
+              >
+                {/* DATE column */}
+                <div className="hub-card-date">
+                  {story.date ? (
+                    <>
+                      <span className="hub-card-date-day">{new Date(story.date + 'T00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                      {story.timestamp && (
+                        <span className="hub-card-date-time">{new Date(story.timestamp).toLocaleString(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}</span>
                       )}
-                      {story.angleClarity && (
-                        <div className="hub-angle-clarity">
-                          <span className="hub-angle-clarity-label">Angle:</span> {story.angleClarity}
-                        </div>
-                      )}
-                      {formatSubmittedAt(story.timestamp) && (
-                        <div className="hub-submit-time">Submitted {formatSubmittedAt(story.timestamp)}</div>
-                      )}
-                      {story.thumbnailUrl && toImageSrc(story.thumbnailUrl) && expandedThumbnails.has(story.id) && (
-                        <a href={story.thumbnailUrl} target="_blank" rel="noopener noreferrer" className="story-thumbnail-link">
-                          <img src={toImageSrc(story.thumbnailUrl)} alt="thumbnail" className="story-thumbnail" />
-                        </a>
-                      )}
-                    </td>
-                    <td className="hub-cell-host">
-                      {story.host
-                        ? <span className="host-name" style={getHostColor(story.host) ? { color: getHostColor(story.host) } : undefined}>
-                            {story.host}
-                            {story.host === ADMIN_USER && <span className="host-admin-badge" title="Admin">ADMIN</span>}
-                          </span>
-                        : '—'}
-                    </td>
-                    <td className="hub-cell-actions">
-                      {/* Working / Done — Hunter only */}
-                      {userName === ADMIN_USER && (
-                        <>
-                          <button
-                            className={`hub-action-btn hub-action-btn--working${story.working ? ' hub-action-btn--working-active' : ''}`}
-                            onClick={() => handleWorking(story.id)}
-                            title="Hunter is packaging this video"
-                          >
-                            Working
-                          </button>
-                          <button
-                            className={`hub-action-btn hub-action-btn--done${story.done ? ' hub-action-btn--done-active' : ''}`}
-                            onClick={() => handleDone(story.id)}
-                            title="Hunter has published this video"
-                          >
-                            Done
-                          </button>
-                        </>
-                      )}
-                      {/* Comments toggle with badge */}
-                      <span className="hub-comment-btn-wrap">
-                        <button
-                          className={`hub-action-btn hub-action-btn--comments${expandedComments.has(story.id) ? ' hub-action-btn--comments-open' : ''}`}
-                          onClick={() => toggleComments(story.id)}
-                          title="Comments"
-                          aria-label="Comments"
-                        >
-                          <ChatIcon />
-                        </button>
-                        {(commentCounts[story.id] || 0) > 0 && (
-                          <span className="hub-comment-badge">{commentCounts[story.id]}</span>
-                        )}
-                      </span>
-                      {story.link && isURL(story.link) && (
-                        <button
-                          className="hub-action-btn hub-action-btn--script"
-                          onClick={() => openScriptModal(story)}
-                          title="Generate MFS Script from URL"
-                        >
-                          <span className="hub-script-icon" aria-hidden="true">📜</span>
-                          <span className="hub-script-label"> Script</span>
-                        </button>
-                      )}
-                      <button
-                        className="hub-action-btn"
-                        onClick={() => editingId === story.id ? cancelEdit() : startEdit(story)}
-                      >
-                        {editingId === story.id ? 'Cancel' : 'Edit'}
-                      </button>
-                      <button
-                        className={`hub-action-btn hub-action-btn--flag${story.flagged ? ' hub-action-btn--flag-active' : ''}`}
-                        onClick={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
-                        title={story.flagged ? 'Unflag this story' : 'Flag a problem on this video'}
-                        aria-pressed={!!story.flagged}
-                      >
-                        ⚑
-                      </button>
-                      {!story.flagged && userName === ADMIN_USER && (
-                        <>
-                          <button className="hub-action-btn hub-action-btn--approve" onClick={() => handleApprove(story.id)} title="Approve story">
-                            Approve
-                          </button>
-                          <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDecline(story.id)} title="Decline and delete story">
-                            Decline
-                          </button>
-                        </>
-                      )}
-                      {story.host === userName && (
-                        <button
-                          className={`hub-action-btn hub-action-btn--alert${alertedIds.has(story.id) ? ' hub-action-btn--alert-sent' : ''}`}
-                          onClick={() => handleAlert(story)}
-                          disabled={alertingIds.has(story.id) || alertedIds.has(story.id) || story.alerted}
-                          title="Alert Hunter that your story needs attention"
-                        >
-                          {alertedIds.has(story.id) || story.alerted ? '✓ Sent' : alertingIds.has(story.id) ? '…' : '🚨'}
-                        </button>
-                      )}
-                      {story.alerted && userName === ADMIN_USER && (
-                        <button
-                          className="hub-action-btn hub-action-btn--working-on-it"
-                          onClick={() => handleWorkingOnIt(story.id)}
-                          disabled={workingOnIds.has(story.id)}
-                          title="Let the host know you're working on it"
-                        >
-                          {workingOnIds.has(story.id) ? '…' : 'Working on it'}
-                        </button>
-                      )}
-                      {userName === ADMIN_USER && (
-                        trainedStoryIds.has(story.id)
-                          ? <span className="hub-trained-label">✓ Added</span>
-                          : <button className="hub-action-btn hub-action-btn--train" onClick={() => openTrainingModal(story)} title="Add to AI Training Data">Train AI</button>
-                      )}
-                      <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDelete(story.id)} title="Delete">
-                        <TrashIcon />
-                      </button>
-                    </td>
-                  </tr>
+                    </>
+                  ) : '—'}
+                </div>
 
-                  {editingId === story.id && (
-                    <tr className="hub-row-edit">
-                      <td colSpan={4}>
-                        <div className="hub-edit-form">
-                          <div className="form-row">
-                            <div className="form-group">
-                              <label>Date</label>
-                              <input type="date" value={editFields.date} onChange={setField('date')} required />
-                            </div>
-                            <div className="form-group">
-                              <label>Host</label>
-                              <select value={editFields.host} onChange={setField('host')}>
-                                <option value="">Unassigned</option>
-                                {users.map(u => <option key={u} value={u}>{u}</option>)}
-                              </select>
-                            </div>
-                          </div>
-                          <div className="form-group">
-                            <label>Headline</label>
-                            <input type="text" value={editFields.headline} onChange={setField('headline')} required />
-                          </div>
-                          <div className="form-group">
-                            <label>Link</label>
-                            <input type="url" value={editFields.link} onChange={setField('link')} />
-                          </div>
-                          <div className="form-group">
-                            <label>Thumbnail URL <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
-                            <input type="url" value={editFields.thumbnailUrl} onChange={setField('thumbnailUrl')} placeholder="https://… or Google Drive share link" />
-                          </div>
-                          <div className="form-group">
-                            <label>Additional Comments</label>
-                            <textarea className="form-textarea" value={editFields.additionalLinks} onChange={setField('additionalLinks')} rows={3} />
-                          </div>
-                          <div className="form-group">
-                            <label>Angle Clarity <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
-                            <textarea className="form-textarea" value={editFields.angleClarity} onChange={setField('angleClarity')} rows={3} placeholder="Explain how you angled your video…" maxLength={300} />
-                          </div>
-                          <div className="form-check-row">
-                            <label className="form-check-label">
-                              <input type="checkbox" className="form-check-input" checked={editFields.breaking} onChange={setCheck('breaking')} />
-                              <span className="form-check-text">Breaking</span>
-                            </label>
-                          </div>
-                          {editStatus === 'error' && <div className="alert alert-error">{editError}</div>}
-                          <div className="hub-edit-actions">
-                            <button className="btn btn-primary" onClick={() => handleSave(story.id)} disabled={editStatus === 'loading'}>
-                              {editStatus === 'loading' ? 'Saving…' : 'Save'}
-                            </button>
-                            <button className="btn-ghost" onClick={cancelEdit}>Cancel</button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
+                {/* STORY column */}
+                <div className="hub-card-story">
+                  <div className="hub-card-title-row">
+                    {story.breaking && <span className="hub-pill hub-pill--breaking">BREAKING</span>}
+                    {story.flagged && <span className="hub-pill hub-pill--flagged">FLAG</span>}
+                    {story.working && <span className="hub-pill hub-pill--working">PACKAGING COMPLETE</span>}
+                    {story.done && <span className="hub-pill hub-pill--done">PUBLISHED</span>}
+                    {story.duplicate && <span className="hub-pill hub-pill--duplicate">DUPLICATE</span>}
+                    {story.link && isURL(story.link)
+                      ? <a href={story.link} target="_blank" rel="noopener noreferrer" className="hub-card-headline">{story.headline}</a>
+                      : <span className="hub-card-headline">{story.headline}</span>
+                    }
+                  </div>
+                  {story.angleClarity && (
+                    <div className="hub-card-angle">
+                      <span className="hub-card-angle-label">ANGLE:</span> {story.angleClarity}
+                    </div>
                   )}
+                  {stripAiContent(story.additionalLinks) && (
+                    <div className="hub-card-comments-text">{stripAiContent(story.additionalLinks)}</div>
+                  )}
+                  {story.thumbnailUrl && toImageSrc(story.thumbnailUrl) && expandedThumbnails.has(story.id) && (
+                    <a href={story.thumbnailUrl} target="_blank" rel="noopener noreferrer" className="story-thumbnail-link">
+                      <img src={toImageSrc(story.thumbnailUrl)} alt="thumbnail" className="story-thumbnail" />
+                    </a>
+                  )}
+                </div>
 
-                  {renderCommentThread(story.id, 4)}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+                {/* HOST column */}
+                <div className="hub-card-host">
+                  {story.host
+                    ? <span className="host-name" style={getHostColor(story.host) ? { color: getHostColor(story.host) } : undefined}>
+                        {story.host}
+                        {story.host === ADMIN_USER && <span className="host-admin-badge" title="Admin">ADMIN</span>}
+                      </span>
+                    : '—'}
+                </div>
+
+                {/* STATUS & ACTIONS column */}
+                <div className="hub-card-actions">
+                  {/* Comments toggle with badge */}
+                  <span className="hub-comment-btn-wrap">
+                    <button
+                      className={`hub-action-btn hub-action-btn--comments${expandedComments.has(story.id) ? ' hub-action-btn--comments-open' : ''}`}
+                      onClick={() => toggleComments(story.id)}
+                      title="Comments"
+                      aria-label="Comments"
+                    >
+                      <ChatIcon />
+                    </button>
+                    {(commentCounts[story.id] || 0) > 0 && (
+                      <span className="hub-comment-badge">{commentCounts[story.id]}</span>
+                    )}
+                  </span>
+                  {story.link && isURL(story.link) && (
+                    <button
+                      className="hub-action-btn hub-action-btn--script"
+                      onClick={() => openScriptModal(story)}
+                      title="Generate MFS Script from URL"
+                    >
+                      <span className="hub-script-icon" aria-hidden="true">📜</span>
+                    </button>
+                  )}
+                  {/* Overflow menu */}
+                  <OverflowMenu
+                    story={story}
+                    userName={userName}
+                    isAdmin={userName === ADMIN_USER}
+                    onEdit={() => editingId === story.id ? cancelEdit() : startEdit(story)}
+                    onFlag={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
+                    onDuplicate={() => handleDuplicate(story)}
+                    onUnduplicate={() => handleUnduplicate(story.id)}
+                    onWorking={() => handleWorking(story.id)}
+                    onDone={() => handleDone(story.id)}
+                    onApprove={() => handleApprove(story.id)}
+                    onDecline={() => handleDecline(story.id)}
+                    onDelete={() => handleDelete(story.id)}
+                    onAlert={() => handleAlert(story)}
+                    alertingIds={alertingIds}
+                    alertedIds={alertedIds}
+                    onWorkingOnIt={() => handleWorkingOnIt(story.id)}
+                    workingOnIds={workingOnIds}
+                    trainedStoryIds={trainedStoryIds}
+                    onTrainAI={() => openTrainingModal(story)}
+                    editing={editingId === story.id}
+                  />
+                </div>
+              </div>
+
+              {/* Edit form (below card) */}
+              {editingId === story.id && (
+                <div className="hub-card-edit">
+                  <div className="hub-edit-form">
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>Date</label>
+                        <input type="date" value={editFields.date} onChange={setField('date')} required />
+                      </div>
+                      <div className="form-group">
+                        <label>Host</label>
+                        <select value={editFields.host} onChange={setField('host')}>
+                          <option value="">Unassigned</option>
+                          {users.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Headline</label>
+                      <input type="text" value={editFields.headline} onChange={setField('headline')} required />
+                    </div>
+                    <div className="form-group">
+                      <label>Link</label>
+                      <input type="url" value={editFields.link} onChange={setField('link')} />
+                    </div>
+                    <div className="form-group">
+                      <label>Thumbnail URL <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+                      <input type="url" value={editFields.thumbnailUrl} onChange={setField('thumbnailUrl')} placeholder="https://… or Google Drive share link" />
+                    </div>
+                    <div className="form-group">
+                      <label>Additional Comments</label>
+                      <textarea className="form-textarea" value={editFields.additionalLinks} onChange={setField('additionalLinks')} rows={3} />
+                    </div>
+                    <div className="form-group">
+                      <label>Angle Clarity <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+                      <textarea className="form-textarea" value={editFields.angleClarity} onChange={setField('angleClarity')} rows={3} placeholder="Explain how you angled your video…" maxLength={300} />
+                    </div>
+                    <div className="form-check-row">
+                      <label className="form-check-label">
+                        <input type="checkbox" className="form-check-input" checked={editFields.breaking} onChange={setCheck('breaking')} />
+                        <span className="form-check-text">Breaking</span>
+                      </label>
+                    </div>
+                    {editStatus === 'error' && <div className="alert alert-error">{editError}</div>}
+                    <div className="hub-edit-actions">
+                      <button className="btn btn-primary" onClick={() => handleSave(story.id)} disabled={editStatus === 'loading'}>
+                        {editStatus === 'loading' ? 'Saving…' : 'Save'}
+                      </button>
+                      <button className="btn-ghost" onClick={cancelEdit}>Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Comment thread */}
+              {expandedComments.has(story.id) && (
+                <div className="hub-card-comment-thread">
+                  {renderCommentThread(story.id, 1)}
+                </div>
+              )}
+            </React.Fragment>
+          ))}
         </div>
       </div>}
 
@@ -965,127 +976,100 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
           </div>
         </div>
 
-        <div className="hub-table-wrap">
-          <table className="hub-table">
-            <thead>
-              <tr>
-                <th className="hub-th-date">Date</th>
-                <th className="hub-th-title">Title</th>
-                <th className="hub-th-claim">Claim</th>
-                <th className="hub-th-actions"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {unclaimed.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="hub-table-empty">
-                    {loading ? 'Loading…' : searchQuery ? 'No stories match your search.' : 'No stories available.'}
-                  </td>
-                </tr>
-              ) : unclaimed.map((story, idx) => (
-                <React.Fragment key={story.id}>
-                  <tr
-                    className={`hub-row${idx % 2 === 1 ? ' hub-row--alt' : ''}${story.flagged ? ' hub-row--flagged' : ''}${newStoryIds.has(story.id) ? ' hub-row--new' : ''}${story.duplicate ? ' hub-row--duplicate' : ''}${story.done ? ' hub-row--done' : ''}`}
-                    style={getHostColor(story.host) ? { '--host-color': getHostColor(story.host) } : undefined}
+        <div className="hub-card-list">
+          {unclaimed.length === 0 ? (
+            <div className="hub-card-empty">
+              {loading ? 'Loading…' : searchQuery ? 'No stories match your search.' : 'No stories available.'}
+            </div>
+          ) : unclaimed.map((story) => (
+            <React.Fragment key={story.id}>
+              <div
+                className={`hub-card${story.flagged ? ' hub-card--flagged' : ''}${newStoryIds.has(story.id) ? ' hub-card--new' : ''}${story.duplicate ? ' hub-card--duplicate' : ''}${story.done ? ' hub-card--done' : ''}`}
+                style={{ '--host-color': 'transparent' }}
+              >
+                <div className="hub-card-date">
+                  {story.date ? (
+                    <span className="hub-card-date-day">{new Date(story.date + 'T00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                  ) : '—'}
+                </div>
+
+                <div className="hub-card-story">
+                  <div className="hub-card-title-row">
+                    {story.breaking && <span className="hub-pill hub-pill--breaking">BREAKING</span>}
+                    {story.duplicate && <span className="hub-pill hub-pill--duplicate">DUPLICATE</span>}
+                    {story.link && isURL(story.link)
+                      ? <a href={story.link} target="_blank" rel="noopener noreferrer" className="hub-card-headline">{story.headline}</a>
+                      : <span className="hub-card-headline">{story.headline}</span>
+                    }
+                  </div>
+                  {story.angleClarity && (
+                    <div className="hub-card-angle">
+                      <span className="hub-card-angle-label">ANGLE:</span> {story.angleClarity}
+                    </div>
+                  )}
+                </div>
+
+                <div className="hub-card-host">
+                  <button
+                    className="hub-claim-btn"
+                    onClick={() => handleClaim(story.id, userName)}
+                    disabled={claimingIds.has(story.id)}
                   >
-                    <td className="hub-cell-date">{story.date || '—'}</td>
-                    <td className="hub-cell-title">
-                      <div className="hub-title-wrap">
-                        {story.breaking && <span className="hub-badge hub-badge--breaking">Breaking</span>}
-                        {story.flagged && <span className="hub-badge hub-badge--flagged">⚑</span>}
-                        {story.thumbnailUrl && toImageSrc(story.thumbnailUrl) && (
-                          <button
-                            className="hub-thumb-toggle"
-                            onClick={() => toggleThumbnail(story.id)}
-                            title={expandedThumbnails.has(story.id) ? 'Collapse thumbnail' : 'Expand thumbnail'}
-                          >
-                            <ChevronIcon open={expandedThumbnails.has(story.id)} />
-                          </button>
-                        )}
-                        {story.link && isURL(story.link)
-                          ? <a href={story.link} target="_blank" rel="noopener noreferrer" className="hub-title-link">{story.headline}</a>
-                          : <span className="hub-title-text">{story.headline}</span>
-                        }
-                        {story.duplicate && <span className="hub-duplicate-badge">DUPLICATE</span>}
-                      </div>
-                      {story.additionalLinks && (
-                        <div className="hub-comments">{story.additionalLinks}</div>
-                      )}
-                      {story.angleClarity && (
-                        <div className="hub-angle-clarity">
-                          <span className="hub-angle-clarity-label">Angle:</span> {story.angleClarity}
-                        </div>
-                      )}
-                      {formatSubmittedAt(story.timestamp) && (
-                        <div className="hub-submit-time">Submitted {formatSubmittedAt(story.timestamp)}</div>
-                      )}
-                      {story.thumbnailUrl && toImageSrc(story.thumbnailUrl) && expandedThumbnails.has(story.id) && (
-                        <a href={story.thumbnailUrl} target="_blank" rel="noopener noreferrer" className="story-thumbnail-link">
-                          <img src={toImageSrc(story.thumbnailUrl)} alt="thumbnail" className="story-thumbnail" />
-                        </a>
-                      )}
-                    </td>
-                    <td className="hub-cell-claim">
-                      <button
-                        className="hub-claim-btn"
-                        onClick={() => handleClaim(story.id, userName)}
-                        disabled={claimingIds.has(story.id)}
-                      >
-                        {claimingIds.has(story.id) ? '…' : 'Claim'}
-                      </button>
-                    </td>
-                    <td className="hub-cell-actions">
-                      {/* Comments toggle with badge */}
-                      <span className="hub-comment-btn-wrap">
-                        <button
-                          className={`hub-action-btn hub-action-btn--comments${expandedComments.has(story.id) ? ' hub-action-btn--comments-open' : ''}`}
-                          onClick={() => toggleComments(story.id)}
-                          title="Comments"
-                          aria-label="Comments"
-                        >
-                          <ChatIcon />
-                        </button>
-                        {(commentCounts[story.id] || 0) > 0 && (
-                          <span className="hub-comment-badge">{commentCounts[story.id]}</span>
-                        )}
-                      </span>
-                      {story.link && isURL(story.link) && (
-                        <button
-                          className="hub-action-btn hub-action-btn--script"
-                          onClick={() => openScriptModal(story)}
-                          title="Generate MFS Script from URL"
-                        >
-                          <span className="hub-script-icon" aria-hidden="true">📜</span>
-                          <span className="hub-script-label"> Script</span>
-                        </button>
-                      )}
-                      <button
-                        className={`hub-action-btn hub-action-btn--flag${story.flagged ? ' hub-action-btn--flag-active' : ''}`}
-                        onClick={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
-                        title={story.flagged ? 'Unflag this story' : 'Flag a problem on this video'}
-                        aria-pressed={!!story.flagged}
-                      >
-                        ⚑
-                      </button>
-                      {!story.flagged && userName === ADMIN_USER && (
-                        <>
-                          <button className="hub-action-btn hub-action-btn--approve" onClick={() => handleApprove(story.id)} title="Approve story">Approve</button>
-                          <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDecline(story.id)} title="Decline and delete story">Decline</button>
-                        </>
-                      )}
-                      <button className="hub-action-btn hub-action-btn--danger" onClick={() => handleDelete(story.id)} title="Delete">
-                        <TrashIcon />
-                      </button>
-                    </td>
-                  </tr>
+                    {claimingIds.has(story.id) ? '…' : 'Claim'}
+                  </button>
+                </div>
 
-                  {renderCommentThread(story.id, 4)}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+                <div className="hub-card-actions">
+                  <span className="hub-comment-btn-wrap">
+                    <button
+                      className={`hub-action-btn hub-action-btn--comments${expandedComments.has(story.id) ? ' hub-action-btn--comments-open' : ''}`}
+                      onClick={() => toggleComments(story.id)}
+                      title="Comments"
+                    >
+                      <ChatIcon />
+                    </button>
+                    {(commentCounts[story.id] || 0) > 0 && (
+                      <span className="hub-comment-badge">{commentCounts[story.id]}</span>
+                    )}
+                  </span>
+                  {story.link && isURL(story.link) && (
+                    <button className="hub-action-btn hub-action-btn--script" onClick={() => openScriptModal(story)} title="Generate MFS Script">
+                      <span className="hub-script-icon" aria-hidden="true">📜</span>
+                    </button>
+                  )}
+                  <OverflowMenu
+                    story={story}
+                    userName={userName}
+                    isAdmin={userName === ADMIN_USER}
+                    onEdit={() => {}}
+                    onFlag={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
+                    onDuplicate={() => handleDuplicate(story)}
+                    onUnduplicate={() => handleUnduplicate(story.id)}
+                    onWorking={() => {}}
+                    onDone={() => {}}
+                    onApprove={() => handleApprove(story.id)}
+                    onDecline={() => handleDecline(story.id)}
+                    onDelete={() => handleDelete(story.id)}
+                    onAlert={() => {}}
+                    alertingIds={alertingIds}
+                    alertedIds={alertedIds}
+                    onWorkingOnIt={() => {}}
+                    workingOnIds={workingOnIds}
+                    trainedStoryIds={trainedStoryIds}
+                    onTrainAI={() => {}}
+                    editing={false}
+                  />
+                </div>
+              </div>
+
+              {expandedComments.has(story.id) && (
+                <div className="hub-card-comment-thread">
+                  {renderCommentThread(story.id, 1)}
+                </div>
+              )}
+            </React.Fragment>
+          ))}
         </div>
-
       </div>}
 
       {/* ── Script generator modal ── */}
@@ -1117,8 +1101,37 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                 placeholder="e.g. Focus on the law enforcement hypocrisy angle..."
                 disabled={generatingScript}
               />
+              {scriptArchiveNote && (
+                <div className="alert alert-success" style={{ marginTop: '0.75rem' }}>Loaded via archive.ph (paywall bypass)</div>
+              )}
               {scriptError && (
                 <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{scriptError}</div>
+              )}
+              {scriptVideoFallback && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  <label className="script-modal-field-label" htmlFor="script-video-url">Paste a video URL (YouTube preferred)</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                    <input
+                      id="script-video-url"
+                      type="url"
+                      className="script-modal-textarea"
+                      style={{ flex: 1, padding: '0.5rem' }}
+                      value={scriptVideoUrl}
+                      onChange={e => setScriptVideoUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      disabled={generatingScript}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={() => handleGenerateScript(scriptVideoUrl.trim())}
+                      disabled={generatingScript || !scriptVideoUrl.trim()}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {generatingScript ? 'Generating...' : 'Use Video'}
+                    </button>
+                  </div>
+                </div>
               )}
               <div className="script-modal-actions">
                 <button
@@ -1129,19 +1142,21 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                 >
                   Cancel
                 </button>
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  onClick={handleGenerateScript}
-                  disabled={generatingScript}
-                >
-                  {generatingScript ? (
-                    <>
-                      <span className="script-spinner" aria-hidden="true" />
-                      Generating…
-                    </>
-                  ) : 'Generate'}
-                </button>
+                {!scriptVideoFallback && (
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    onClick={() => handleGenerateScript()}
+                    disabled={generatingScript}
+                  >
+                    {generatingScript ? (
+                      <>
+                        <span className="script-spinner" aria-hidden="true" />
+                        Generating…
+                      </>
+                    ) : 'Generate'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
