@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import HelpTooltip from './HelpTooltip';
 
@@ -144,6 +144,58 @@ function buildComments(article) {
     parts.push(`[Suggested Headlines]\n${article.titles.map((t, i) => `${i + 1}. ${t}`).join('\n')}`);
   }
   return parts.join('\n\n');
+}
+
+// ── Story finder progress bar ────────────────────────────────────────────────
+const DISCOVER_STEPS = [
+  { at: 0,  label: 'Fetching news feeds...',             sub: 'Searching 4 editorial lanes' },
+  { at: 3,  label: 'Filtering & deduplicating...',       sub: 'Removing junk, tabloids, duplicates' },
+  { at: 6,  label: 'Clustering related stories...',      sub: 'Grouping by topic similarity' },
+  { at: 10, label: 'Generating angles...',               sub: 'AI enrichment per story cluster' },
+  { at: 25, label: 'Still generating angles...',          sub: 'This is the slow part' },
+  { at: 45, label: 'Almost there...',                    sub: 'Finishing enrichment' },
+];
+
+function DiscoverProgress({ loading }) {
+  const startRef = useRef(Date.now());
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!loading) { startRef.current = Date.now(); setElapsed(0); return; }
+    startRef.current = Date.now();
+    const tick = () => {
+      setElapsed((Date.now() - startRef.current) / 1000);
+      frame = requestAnimationFrame(tick);
+    };
+    let frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [loading]);
+
+  if (!loading) return null;
+
+  const rawProgress = Math.min(elapsed / 55, 1);
+  const eased = 1 - Math.pow(1 - rawProgress, 2.5);
+  const percent = Math.min(eased * 95, 95);
+
+  let step = DISCOVER_STEPS[0];
+  for (const s of DISCOVER_STEPS) {
+    if (elapsed >= s.at) step = s;
+  }
+
+  return (
+    <div className="discover-progress">
+      <div className="discover-progress-track">
+        <div
+          className="discover-progress-fill"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div className="discover-progress-labels">
+        <span className="discover-progress-status">{step.label}</span>
+        <span className="discover-progress-sub">{step.sub}</span>
+      </div>
+    </div>
+  );
 }
 
 export default function FindStories({ passphrase, userName }) {
@@ -493,7 +545,7 @@ export default function FindStories({ passphrase, userName }) {
       {/* ── Articles tab (completely unchanged rendering) ── */}
       {findTab === 'articles' && (
         <>
-          {loading && <div className="find-stories-loading-bar" />}
+          <DiscoverProgress loading={loading} />
           {error && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{error}</div>}
           {sourceFallback && articles.length > 0 && (
             <div className="source-fallback-notice">
@@ -521,9 +573,7 @@ export default function FindStories({ passphrase, userName }) {
             </div>
           )}
 
-          {loading && articles.length === 0 ? (
-            <div className="find-stories-empty">Fetching latest political news and generating angles…</div>
-          ) : articles.length === 0 && !loading ? (
+          {loading && articles.length === 0 ? null : articles.length === 0 && !loading ? (
             <div className="find-stories-empty">No articles from approved outlets found. Try refreshing or switching to Last 24h.</div>
           ) : (
             <div className="article-grid">
