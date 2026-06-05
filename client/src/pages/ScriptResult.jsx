@@ -62,9 +62,9 @@ export default function ScriptResult() {
       <section className="section script-result">
         <h2>Script Result</h2>
         <p className="script-result-empty">
-          No script to display. Generate one from the Find Stories page.
+          No script to display. Generate one from the Create page.
         </p>
-        <button className="btn btn-primary" onClick={() => navigate('/find-stories')}>
+        <button className="btn btn-primary" onClick={() => navigate('/create')}>
           Back to Stories
         </button>
       </section>
@@ -84,7 +84,7 @@ export default function ScriptResult() {
           )}
         </div>
         <div className="script-result-actions">
-          <button className="btn btn-ghost" onClick={() => navigate('/find-stories')}>
+          <button className="btn btn-ghost" onClick={() => navigate('/create')}>
             ← Back to Stories
           </button>
           <button className="btn btn-primary" onClick={handleCopy}>

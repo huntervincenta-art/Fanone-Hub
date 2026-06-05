@@ -2,16 +2,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import AuthGate from './components/AuthGate';
 import StoryForm from './components/StoryForm';
-import StoryFeed from './components/StoryFeed';
 import MessagingPanel from './components/MessagingPanel';
-import FindStories from './components/FindStories';
 import TitleTool from './components/TitleTool';
 import PresenceDropdown from './components/PresenceDropdown';
-import Notifications from './components/Notifications';
-import ListPage from './components/ListPage';
-import TopicPulse from './pages/TopicPulse';
 import ScriptResult from './pages/ScriptResult';
 import Dashboard from './pages/Dashboard';
+import Create from './pages/Create';
+import StoryLog from './pages/StoryLog';
 import './App.css';
 
 const PERSISTENT_KEY       = 'team_hub_persistent_auth';
@@ -266,7 +263,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape' && submitOpen) { setSubmitOpen(false); return; }
-      if (e.key === 'n' && !submitOpen && location.pathname === '/stories') {
+      if (e.key === 'n' && !submitOpen && location.pathname === '/story-log') {
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         setSubmitOpen(true);
@@ -299,37 +296,16 @@ export default function App() {
             Dashboard
           </Link>
           <Link
-            className={`app-nav-link${isActive('/stories') ? ' app-nav-link--active' : ''}`}
-            to="/stories"
+            className={`app-nav-link${isActive('/create') ? ' app-nav-link--active' : ''}`}
+            to="/create"
           >
-            Stories
+            Create
           </Link>
           <Link
-            className={`app-nav-link${isActive('/find-stories') ? ' app-nav-link--active' : ''}`}
-            to="/find-stories"
+            className={`app-nav-link${isActive('/story-log') ? ' app-nav-link--active' : ''}`}
+            to="/story-log"
           >
-            Find Stories
-          </Link>
-          <span className="app-nav-divider" aria-hidden="true" />
-          <Link
-            className={`app-nav-link app-nav-link--secondary${isActive('/topic-pulse') ? ' app-nav-link--active' : ''}`}
-            to="/topic-pulse"
-          >
-            Topic Pulse
-          </Link>
-          <Link
-            className={`app-nav-link app-nav-link--secondary${isActive('/list') ? ' app-nav-link--active' : ''}`}
-            to="/list"
-          >
-            List
-          </Link>
-          <Link
-            className={`app-nav-link app-nav-link--secondary${isActive('/notifications') ? ' app-nav-link--active' : ''}`}
-            to="/notifications"
-            title="Alerts"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            Alerts
+            Story Log
           </Link>
         </nav>
         <div className="app-header-right">
@@ -390,21 +366,21 @@ export default function App() {
             <div className="mobile-nav-overlay" onClick={() => setMenuOpen(false)} />
             <nav className="mobile-nav-dropdown">
               <Link className={`mobile-nav-link${isActive('/') ? ' mobile-nav-link--active' : ''}`} to="/">Dashboard</Link>
-              <Link className={`mobile-nav-link${isActive('/stories') ? ' mobile-nav-link--active' : ''}`} to="/stories">Stories</Link>
-              <Link className={`mobile-nav-link${isActive('/find-stories') ? ' mobile-nav-link--active' : ''}`} to="/find-stories">Find Stories</Link>
-              <Link className={`mobile-nav-link${isActive('/topic-pulse') ? ' mobile-nav-link--active' : ''}`} to="/topic-pulse">Topic Pulse</Link>
-              <Link className={`mobile-nav-link${isActive('/list') ? ' mobile-nav-link--active' : ''}`} to="/list">List</Link>
-              <Link className={`mobile-nav-link${isActive('/notifications') ? ' mobile-nav-link--active' : ''}`} to="/notifications">Alerts</Link>
+              <Link className={`mobile-nav-link${isActive('/create') ? ' mobile-nav-link--active' : ''}`} to="/create">Create</Link>
+              <Link className={`mobile-nav-link${isActive('/story-log') ? ' mobile-nav-link--active' : ''}`} to="/story-log">Story Log</Link>
             </nav>
           </>
         )}
       </header>
 
-      <main className={`app-main${location.pathname === '/stories' ? ' app-main--hub' : ''}`}>
+      <main className={`app-main${location.pathname === '/story-log' ? ' app-main--hub' : ''}`}>
         <Routes>
           <Route path="/" element={<Dashboard passphrase={passphrase} userName={userName} />} />
-          <Route path="/stories" element={
-            <StoryFeed
+          <Route path="/create" element={
+            <Create passphrase={passphrase} userName={userName} />
+          } />
+          <Route path="/story-log" element={
+            <StoryLog
               stories={stories}
               loading={feedLoading}
               error={feedError}
@@ -414,11 +390,6 @@ export default function App() {
               onSubmitClick={() => setSubmitOpen(true)}
               lastUpdated={lastUpdated}
             />
-          } />
-          <Route path="/find-stories" element={
-            <section className="section">
-              <FindStories passphrase={passphrase} userName={userName} />
-            </section>
           } />
           <Route path="/title-tool" element={
             <section className="section">
@@ -436,19 +407,6 @@ export default function App() {
               <h2>Team Posts</h2>
               <MessagingPanel passphrase={passphrase} userName={userName} initialTab="dm" />
             </section>
-          } />
-          <Route path="/list" element={
-            <section className="section">
-              <ListPage passphrase={passphrase} userName={userName} />
-            </section>
-          } />
-          <Route path="/notifications" element={
-            <section className="section">
-              <Notifications />
-            </section>
-          } />
-          <Route path="/topic-pulse" element={
-            <TopicPulse passphrase={passphrase} userName={userName} />
           } />
           <Route path="/script-result" element={<ScriptResult />} />
         </Routes>

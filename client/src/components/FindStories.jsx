@@ -574,6 +574,28 @@ export default function FindStories({ passphrase, userName }) {
                       {article.headline}
                     </a>
 
+                    {article.sources && article.sources.length > 1 && (
+                      <div className="article-cluster-sources">
+                        <span className="article-section-label">
+                          Also covered by ({article.sources.length - 1})
+                        </span>
+                        <div className="article-cluster-list">
+                          {article.sources.slice(1).map((s, i) => (
+                            <a
+                              key={i}
+                              className="article-cluster-link"
+                              href={s.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={s.sourceName}
+                            >
+                              {s.outlet || s.sourceName || 'Source'}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {article.angle && (
                       <div className="article-angle">
                         <span className="article-section-label">Angle</span>

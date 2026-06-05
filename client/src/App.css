@@ -1409,6 +1409,39 @@ body {
   color: var(--accent);
 }
 
+.article-cluster-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(34, 197, 94, 0.06);
+  border-left: 2px solid #22c55e;
+  border-radius: 0 4px 4px 0;
+}
+
+.article-cluster-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.article-cluster-link {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  background: rgba(34, 197, 94, 0.12);
+  border-radius: 3px;
+  font-size: 0.75rem;
+  color: var(--text);
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+
+.article-cluster-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
 .article-angle {
   display: flex;
   flex-direction: column;

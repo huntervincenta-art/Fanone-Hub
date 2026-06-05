@@ -534,7 +534,7 @@ function RecentScriptsCompact({ passphrase }) {
         <ul className="recent-scripts-list">
           {scripts.map(s => (
             <li key={s.id} className="recent-scripts-item">
-              <Link to="/topic-pulse" className="recent-scripts-link">
+              <Link to="/create" className="recent-scripts-link">
                 <div className="recent-scripts-title">{s.articleTitle || '(Untitled)'}</div>
                 <div className="recent-scripts-meta">
                   <span>{formatDate(s.createdAt)}</span>
@@ -546,7 +546,7 @@ function RecentScriptsCompact({ passphrase }) {
         </ul>
       )}
       <div className="dash-card-footer">
-        <Link to="/topic-pulse" className="dashboard-link-muted">View all scripts →</Link>
+        <Link to="/create" className="dashboard-link-muted">View all scripts →</Link>
       </div>
     </div>
   );

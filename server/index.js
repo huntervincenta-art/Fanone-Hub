@@ -22,7 +22,7 @@ const { analyzeSubject: tpAnalyzeSubject } = require('./routes/topicPulse');
 const MFS_SYSTEM_PROMPT = require('./mfs-system-prompt');
 const { classifyUrl, extractYouTubeId } = require('./utils/urlType');
 const { fetchTranscript: fetchYouTubeTranscript } = require('./utils/youtubeTranscript');
-const { scoreHeadlineForFanone, fanoneOpportunityBucket, classifyCategory, twoPassScore, checkMikeWorthy } = require('./utils/fanone-shared');
+const { scoreHeadlineForFanone, fanoneOpportunityBucket, classifyCategory, twoPassScore, checkMikeWorthy, LANE_FEDERAL_LE_KEYWORDS, LANE_ADMIN_CORRUPTION_KEYWORDS } = require('./utils/fanone-shared');
 const { GOOGLE_NEWS_HEADERS } = require('./utils/news-headers');
 
 // Shared HTTPS agent with connection pooling to prevent ENOBUFS from too many open sockets
@@ -2770,7 +2770,72 @@ app.patch('/api/topical-narratives/:id/status', requireAuth, async (req, res) =>
   }
 });
 
-// GET /api/find-stories — scrape Google News RSS and enrich with Anthropic
+// ── Multi-query RSS URLs for lane-targeted fetching ─────────────────────────
+// Each query targets a different editorial lane so law-enforcement and
+// accountability stories aren't missed by a single generic political query.
+const FIND_STORIES_RSS_QUERIES = [
+  // Generic political (original query)
+  'Trump+OR+Democrats+OR+Republicans+OR+Congress+OR+MAGA',
+  // Law enforcement / federal agencies (from LANE_FEDERAL_LE_KEYWORDS)
+  'police+OR+DOJ+OR+FBI+OR+ICE+OR+"law+enforcement"+OR+officer+OR+sheriff+OR+"border+patrol"+OR+ATF+OR+DEA',
+  // Accountability / arrests / indictments (from LANE_ADMIN_CORRUPTION_KEYWORDS + LE)
+  'arrested+OR+indicted+OR+charged+OR+"grand+jury"+OR+corruption+OR+sentenced+OR+pardon+OR+whistleblower',
+  // J6 / courts / constitutional (from scoring keywords)
+  '"January+6"+OR+Capitol+OR+"Justice+Department"+OR+"court+ruling"+OR+"supreme+court"+OR+insurrection',
+];
+
+// ── Clustering helper: lightweight Jaccard similarity on title tokens ────────
+function normalizeTokens(text) {
+  return text.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(t => t.length > 2);
+}
+
+function jaccardSimilarity(tokensA, tokensB) {
+  const setA = new Set(tokensA);
+  const setB = new Set(tokensB);
+  let intersection = 0;
+  for (const t of setA) {
+    if (setB.has(t)) intersection++;
+  }
+  const union = new Set([...setA, ...setB]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function clusterArticles(articles, similarityThreshold = 0.45, timeWindowMs = 6 * 60 * 60 * 1000) {
+  const clusters = []; // each cluster: { primary: article, sources: [{ sourceName, link }] }
+  const assigned = new Set();
+
+  // Pre-compute tokens for each article
+  const tokenMap = articles.map(a => normalizeTokens(`${a.title} ${a.description || ''}`));
+
+  for (let i = 0; i < articles.length; i++) {
+    if (assigned.has(i)) continue;
+    const cluster = {
+      primary: articles[i],
+      sources: [{ sourceName: articles[i].sourceName, link: articles[i].link }],
+    };
+    assigned.add(i);
+
+    for (let j = i + 1; j < articles.length; j++) {
+      if (assigned.has(j)) continue;
+      // Time proximity check
+      const timeDiff = Math.abs((articles[i].pubMs || 0) - (articles[j].pubMs || 0));
+      if (timeDiff > timeWindowMs) continue;
+      // Jaccard similarity on title+description tokens
+      const sim = jaccardSimilarity(tokenMap[i], tokenMap[j]);
+      if (sim >= similarityThreshold) {
+        cluster.sources.push({ sourceName: articles[j].sourceName, link: articles[j].link });
+        assigned.add(j);
+      }
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
+
+// GET /api/find-stories — scrape Google News RSS (multi-query) and enrich with Anthropic
 app.get('/api/find-stories', requireAuth, async (req, res) => {
   try {
     const win = req.query.window || '6h';
@@ -2783,38 +2848,42 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
       return res.json(cached.data);
     }
 
-    const rssUrl = 'https://news.google.com/rss/search?q=Trump+OR+Democrats+OR+Republicans+OR+Congress+OR+MAGA&hl=en-US&gl=US&ceid=US:en';
-    console.log('[find-stories] fetching RSS');
-
-    const rssRes = await fetchGoogleNewsRss(rssUrl, 'find-stories');
-    console.log('[find-stories] RSS status:', rssRes.status);
-
-    if (rssRes.status !== 200 || typeof rssRes.body !== 'string') {
-      return res.status(502).json({ error: 'Google News RSS fetch failed', rssStatus: rssRes.status });
-    }
-
+    // Fetch all lane-targeted RSS queries sequentially (avoids hammering Google)
     const rssParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
-    const parsed = rssParser.parse(rssRes.body);
-    const rawItems = [].concat(parsed?.rss?.channel?.item || []);
-    console.log('[find-stories] RSS items:', rawItems.length);
+    const allRawItems = [];
 
-    // Debug: log first item structure for diagnostics
-    if (rawItems[0]) {
-      console.log('[find-stories] first RSS item structure:', JSON.stringify(rawItems[0], null, 2).slice(0, 500));
+    for (const q of FIND_STORIES_RSS_QUERIES) {
+      const rssUrl = `https://news.google.com/rss/search?q=${q}&hl=en-US&gl=US&ceid=US:en`;
+      try {
+        const rssRes = await fetchGoogleNewsRss(rssUrl, 'find-stories');
+        if (rssRes.status === 200 && typeof rssRes.body === 'string') {
+          const parsed = rssParser.parse(rssRes.body);
+          const items = [].concat(parsed?.rss?.channel?.item || []);
+          allRawItems.push(...items);
+          console.log(`[find-stories] query "${q.slice(0, 50)}…" returned ${items.length} items`);
+        } else {
+          console.warn(`[find-stories] query "${q.slice(0, 50)}…" failed with status ${rssRes.status}`);
+        }
+      } catch (fetchErr) {
+        console.warn(`[find-stories] query "${q.slice(0, 50)}…" error: ${fetchErr.message}`);
+      }
     }
 
-    if (rawItems.length === 0) {
-      return res.status(502).json({ error: 'Google News RSS returned no items' });
+    console.log('[find-stories] total raw RSS items across all queries:', allRawItems.length);
+
+    if (allRawItems.length === 0) {
+      return res.status(502).json({ error: 'Google News RSS returned no items from any query' });
     }
 
-    const POLITICAL_KEYWORDS = /trump|white house|congress|senate|maga|democrat|republican|biden|political/i;
+    // Widened post-fetch filter: includes law enforcement, accountability, and court terms
+    const POLITICAL_KEYWORDS = /trump|white house|congress|senate|maga|democrat|republican|biden|political|police|officer|sheriff|fbi|doj|ice |arrested|indicted|charged|sentenced|pardon|capitol|corruption|court|law enforcement|prosecutor|attorney general|grand jury|deport/i;
     const JUNK_TITLE_WORDS   = /\bnfl\b|\bnba\b|\bmlb\b|\bmovie\b|\bcelebrity\b|\bsports?\b|\bgame\b|\bscore\b|\bactor\b/i;
 
     const cutoff = Date.now() - windowMs;
     const seen = new Set();
     const pool = [];
 
-    for (const item of rawItems) {
+    for (const item of allRawItems) {
       try {
         const title = typeof item.title === 'string' ? item.title
           : (item.title?.['#text'] || String(item.title || ''));
@@ -2849,18 +2918,29 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
       : keywordFiltered.length >= 3 ? keywordFiltered : workingPool;
 
     filteredPool.sort((a, b) => (b.pubMs || 0) - (a.pubMs || 0));
-    const articles = filteredPool.slice(0, 40);
+    const topArticles = filteredPool.slice(0, 40);
 
-    console.log('[find-stories] pool:', pool.length, '| timeFiltered:', timeFiltered.length, '| after junk filter:', filteredPool.length, '| enriching:', articles.length, '| freshest:', articles[0]?.pubDate || 'none');
+    console.log('[find-stories] pool:', pool.length, '| timeFiltered:', timeFiltered.length, '| after junk filter:', filteredPool.length, '| top articles:', topArticles.length, '| freshest:', topArticles[0]?.pubDate || 'none');
 
-    const enriched = await Promise.all(articles.map(async (article) => {
+    // ── Cluster similar articles about the same event ──
+    const clusters = clusterArticles(topArticles);
+    console.log('[find-stories] clustered', topArticles.length, 'articles into', clusters.length, 'clusters');
+
+    // Enrich only ONE representative per cluster (saves API calls)
+    const enriched = await Promise.all(clusters.map(async (cluster) => {
+      const article = cluster.primary;
       // Outlet matching + INTERNATIONAL tagging
       const outletMatch = matchApprovedOutlet({ url: article.link, source: article.sourceName, sourceName: article.sourceName });
       const outlet = outletMatch ? outletMatch.name : null;
-      // If outlet is recognized, it's approved (incl BBC). If not, tag as INTERNATIONAL.
       const isInternational = !outlet;
-      // Category from scoring
       const category = classifyCategory(`${article.title} ${article.description || ''}`);
+
+      // Build the sources array for this cluster
+      const sources = cluster.sources.map(s => ({
+        sourceName: s.sourceName,
+        url: s.link,
+        outlet: matchApprovedOutlet({ url: s.link, source: s.sourceName, sourceName: s.sourceName })?.name || null,
+      }));
 
       try {
         const anthropicRes = await httpsRequest(
@@ -2914,6 +2994,7 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
           isInternational,
           angle,
           titles,
+          sources,
         };
       } catch (enrichErr) {
         console.error('[find-stories] enrichment error for "' + article.title + '":', enrichErr.message);
@@ -2928,13 +3009,14 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
           isInternational,
           angle: `Enrichment error: ${enrichErr.message}`,
           titles: [],
+          sources,
         };
       }
     }));
 
     enriched.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
     findStoriesCache.set(cacheKey, { data: enriched, expiresAt: Date.now() + FIND_STORIES_CACHE_TTL_MS });
-    console.log('[find-stories] cached result | expires in 2 min');
+    console.log('[find-stories] cached result | expires in 2 min |', enriched.length, 'story clusters');
     res.json(enriched);
   } catch (err) {
     console.error('GET /api/find-stories error:', err.message);

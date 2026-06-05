@@ -999,6 +999,9 @@ const TP_TABS = [
   { key: 'topical', label: 'Topical' },
 ];
 
+// Named exports for reuse in Create page
+export { SmartInput, ScriptDisplay, HistoryLog, ScriptAnalyzer, TopicalTab, NarratingLoader, NarrativeCard, detectInputType };
+
 export default function TopicPulse({ passphrase, userName }) {
   const [activeTab, setActiveTab] = useState('newsCycle');
   const [generating, setGenerating] = useState(false);
