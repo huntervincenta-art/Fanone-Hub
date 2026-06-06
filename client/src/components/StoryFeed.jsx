@@ -22,10 +22,14 @@ const ChevronIcon = ({ open }) => (
 );
 
 const ADMIN_USER = 'Hunter';
+const ADMIN_USERS = ['Hunter', 'Peter'];
 
-function OverflowMenu({ story, userName, isAdmin, onEdit, onFlag, onDuplicate, onUnduplicate, onWorking, onDone, onApprove, onDecline, onDelete, onAlert, alertingIds, alertedIds, onWorkingOnIt, workingOnIds, trainedStoryIds, onTrainAI, editing }) {
+function OverflowMenu({ userName, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = React.useRef(null);
+
+  // Only render for admins
+  if (!ADMIN_USERS.includes(userName)) return null;
 
   React.useEffect(() => {
     if (!open) return;
@@ -39,36 +43,6 @@ function OverflowMenu({ story, userName, isAdmin, onEdit, onFlag, onDuplicate, o
       <button className="hub-overflow-btn" onClick={() => setOpen(o => !o)} aria-label="More actions">···</button>
       {open && (
         <div className="hub-overflow-menu">
-          <button className="hub-overflow-item" onClick={() => { onEdit(); setOpen(false); }}>{editing ? 'Cancel Edit' : 'Edit'}</button>
-          <button className="hub-overflow-item" onClick={() => { onFlag(); setOpen(false); }}>{story.flagged ? 'Unflag' : 'Flag'}</button>
-          {story.duplicate
-            ? <button className="hub-overflow-item" onClick={() => { onUnduplicate(); setOpen(false); }}>Remove Duplicate</button>
-            : <button className="hub-overflow-item" onClick={() => { onDuplicate(); setOpen(false); }}>Flag as Duplicate</button>
-          }
-          {isAdmin && (
-            <>
-              <button className="hub-overflow-item" onClick={() => { onWorking(); setOpen(false); }}>{story.working ? 'Undo Working' : 'Mark as Working'}</button>
-              <button className="hub-overflow-item" onClick={() => { onDone(); setOpen(false); }}>{story.done ? 'Undo Done' : 'Mark as Done'}</button>
-              {!story.flagged && (
-                <>
-                  <button className="hub-overflow-item" onClick={() => { onApprove(); setOpen(false); }}>Approve</button>
-                  <button className="hub-overflow-item hub-overflow-item--danger" onClick={() => { onDecline(); setOpen(false); }}>Decline</button>
-                </>
-              )}
-              {story.alerted && (
-                <button className="hub-overflow-item" onClick={() => { onWorkingOnIt(); setOpen(false); }} disabled={workingOnIds.has(story.id)}>Working on it</button>
-              )}
-              {trainedStoryIds.has(story.id)
-                ? <span className="hub-overflow-item hub-overflow-item--muted">AI Trained</span>
-                : <button className="hub-overflow-item" onClick={() => { onTrainAI(); setOpen(false); }}>Train AI</button>
-              }
-            </>
-          )}
-          {story.host === userName && (
-            <button className="hub-overflow-item" onClick={() => { onAlert(); setOpen(false); }} disabled={alertingIds.has(story.id) || alertedIds.has(story.id) || story.alerted}>
-              {alertedIds.has(story.id) || story.alerted ? 'Alert Sent' : 'Alert Hunter'}
-            </button>
-          )}
           <button className="hub-overflow-item hub-overflow-item--danger" onClick={() => { onDelete(); setOpen(false); }}>Delete</button>
         </div>
       )}
@@ -820,26 +794,8 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                   )}
                   {/* Overflow menu */}
                   <OverflowMenu
-                    story={story}
                     userName={userName}
-                    isAdmin={userName === ADMIN_USER}
-                    onEdit={() => editingId === story.id ? cancelEdit() : startEdit(story)}
-                    onFlag={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
-                    onDuplicate={() => handleDuplicate(story)}
-                    onUnduplicate={() => handleUnduplicate(story.id)}
-                    onWorking={() => handleWorking(story.id)}
-                    onDone={() => handleDone(story.id)}
-                    onApprove={() => handleApprove(story.id)}
-                    onDecline={() => handleDecline(story.id)}
                     onDelete={() => handleDelete(story.id)}
-                    onAlert={() => handleAlert(story)}
-                    alertingIds={alertingIds}
-                    alertedIds={alertedIds}
-                    onWorkingOnIt={() => handleWorkingOnIt(story.id)}
-                    workingOnIds={workingOnIds}
-                    trainedStoryIds={trainedStoryIds}
-                    onTrainAI={() => openTrainingModal(story)}
-                    editing={editingId === story.id}
                   />
                 </div>
               </div>
@@ -1038,26 +994,8 @@ export default function StoryFeed({ stories, loading, error, passphrase, onRefre
                     </button>
                   )}
                   <OverflowMenu
-                    story={story}
                     userName={userName}
-                    isAdmin={userName === ADMIN_USER}
-                    onEdit={() => {}}
-                    onFlag={() => story.flagged ? handleUnflag(story.id) : handleFlag(story.id)}
-                    onDuplicate={() => handleDuplicate(story)}
-                    onUnduplicate={() => handleUnduplicate(story.id)}
-                    onWorking={() => {}}
-                    onDone={() => {}}
-                    onApprove={() => handleApprove(story.id)}
-                    onDecline={() => handleDecline(story.id)}
                     onDelete={() => handleDelete(story.id)}
-                    onAlert={() => {}}
-                    alertingIds={alertingIds}
-                    alertedIds={alertedIds}
-                    onWorkingOnIt={() => {}}
-                    workingOnIds={workingOnIds}
-                    trainedStoryIds={trainedStoryIds}
-                    onTrainAI={() => {}}
-                    editing={false}
                   />
                 </div>
               </div>

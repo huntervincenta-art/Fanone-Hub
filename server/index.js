@@ -76,6 +76,7 @@ const TAB = 'Stories';
 const TRAINING_SHEET_ID = '1HlMZzmbAqIFjpqy9Hhp2TKBu_3vDIRqkxxeKGBmSRVQ';
 const USERS_FILE = path.join(__dirname, 'users.json');
 const ADMIN_USER = 'Hunter';
+const ADMIN_USERS = ['Hunter', 'Peter'];
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
@@ -977,6 +978,9 @@ app.put('/api/stories/:id', requireAuth, async (req, res) => {
 // DELETE /api/stories/:id — remove a story
 app.delete('/api/stories/:id', requireAuth, async (req, res) => {
   const { user } = req.body || {};
+  if (!ADMIN_USERS.includes(user)) {
+    return res.status(403).json({ error: 'Only admins can delete stories' });
+  }
   try {
     const story = await Story.findByIdAndDelete(req.params.id);
     if (!story) return res.status(404).json({ error: 'Story not found' });
