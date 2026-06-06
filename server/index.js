@@ -793,6 +793,10 @@ app.post('/api/stories', requireAuth, async (req, res) => {
     const obj = toObj(story);
     addLog(user || 'Unknown', 'story_submitted', headline);
     syncStoryToSheet(obj).catch(() => {});
+
+    // Log to activity
+    new ActivityLog({ type: 'discover', title: headline, user: user || '', payload: { action: claimed ? 'claimed' : 'added', storyId: obj.id, link: link || '', host: host || '' } }).save().catch(() => {});
+
     res.json(obj);
   } catch (err) {
     console.error('POST /api/stories error:', err.message);

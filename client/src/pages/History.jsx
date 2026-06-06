@@ -51,6 +51,9 @@ function PayloadDetail({ entry }) {
   if (entry.type === 'discover') {
     return (
       <div className="history-detail-body">
+        {p.action && <div><strong>Action:</strong> {p.action === 'claimed' ? 'Claimed story' : p.action === 'added' ? 'Added to available' : p.action}</div>}
+        {p.host && <div><strong>Claimed by:</strong> {p.host}</div>}
+        {p.link && <div><strong>Link:</strong> <a href={p.link} target="_blank" rel="noopener noreferrer">{p.link}</a></div>}
         {p.window && <div><strong>Window:</strong> {p.window}</div>}
         {p.storyCount != null && <div><strong>Stories found:</strong> {p.storyCount}</div>}
         {p.topHeadlines && p.topHeadlines.length > 0 && (
