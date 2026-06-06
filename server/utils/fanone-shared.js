@@ -7,166 +7,60 @@
 //   - Editorial lane keywords map to Sections 2 & 3
 //   - Two-pass scoring: keyword (40%) + AI lane fit (60%)
 //   - "Mike-worthy?" gate for recommendation surfaces
+//
+// Updated 2026-06-05: keywords, weights, multipliers, and penalties now loaded
+// from fanone-editorial.json at repo root. Scoring math is unchanged.
 
 const https = require('https');
+const fs    = require('fs');
+const path  = require('path');
+
+// ── Load editorial config (once at module init) ─────────────────────────────
+
+const CONFIG_PATH = path.join(__dirname, '..', '..', 'fanone-editorial.json');
+const CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
 // ── Editorial Lane Keywords (per FANONE_EDITORIAL.md Section 2) ──────────────
 
-// 2.1 Federal Law Enforcement (CORE LANE) — highest weight
-const LANE_FEDERAL_LE_KEYWORDS = [
-  'ice ', 'i.c.e.', 'doj', 'justice department', 'fbi', 'kash patel',
-  'federal law enforcement', 'federal agent', 'federal agents',
-  'border patrol', 'immigration enforcement', 'deport', 'deportation',
-  'detention', 'detain', 'detained', 'raid', 'ice raid',
-  'atf', 'dea', 'task force', 'undercover', 'narcotics',
-  'drug trafficking', 'trafficking', 'cartel',
-  'law enforcement', 'police', 'cop ', 'cops', 'policing',
-  'body cam', 'bodycam', 'police reform', 'use of force',
-  'officer', 'officers', 'sheriff', 'prosecutor',
-  'indict', 'indicted', 'indictment', 'attorney general',
-];
+const lanesByID = {};
+for (const lane of CONFIG.editorialLanes) {
+  lanesByID[lane.id] = lane.keywords;
+}
 
-// 2.2 Administration Incompetence & Corruption
-const LANE_ADMIN_CORRUPTION_KEYWORDS = [
-  'rfk', 'robert f. kennedy', 'hegseth', 'pete hegseth', 'rubio', 'marco rubio',
-  'kash patel', 'cabinet', 'secretary', 'loyalist', 'loyalists',
-  'incompetent', 'incompetence', 'unqualified', 'corruption', 'corrupt',
-  'bribe', 'bribery', 'kickback', 'pay-to-play', 'grift',
-  'abuse of power', 'misconduct', 'ethics violation', 'conflict of interest',
-  'whistleblower', 'cover up', 'cover-up', 'coverup',
-  'oversight', 'accountability', 'inspector general',
-  'trump deal', 'corrupt deal', 'pardon', 'commutation',
-];
-
-// 2.3 Democrats Not Meeting the Moment
-const LANE_DEMS_MOMENT_KEYWORDS = [
-  'fetterman', 'capitulate', 'capitulation', 'soft-pedal', 'normalize',
-  'democrat cave', 'democrats cave', 'democratic capitulation',
-  'bipartisan surrender', 'reaching across', 'working with trump',
-  'democrat fail', 'democrats fail', 'democratic leadership',
-  'schumer', 'pelosi', 'hakeem jeffries', 'democratic establishment',
-  'meet the moment', 'missing the moment', 'accountability and affordability',
-];
-
-// 2.4 Democratic Party Direction & Infighting
-const LANE_DEM_DIRECTION_KEYWORDS = [
-  'party direction', 'democratic party', 'party infight', 'dem infight',
-  'midterm', 'midterms', 'primary challenge', 'progressive vs moderate',
-  'party strategy', 'democratic strategy', 'what democrats should',
-  'party identity', 'democratic brand', 'winning message',
-];
-
-// 2.5 Legacy Media False Balance
-const LANE_MEDIA_BALANCE_KEYWORDS = [
-  'both sides', 'false equivalence', 'sanewashing', 'normalizing',
-  'fair and balanced', 'false balance', 'mainstream media',
-  'cnn', 'msnbc', 'new york times', 'nyt', 'washington post',
-  'platformed', 'fact-check', 'retraction', 'correction', 'softball',
-  'benefit of the doubt', 'puff piece', 'covering for trump',
-  'media failure', 'media malpractice', 'press failure',
-];
+const LANE_FEDERAL_LE_KEYWORDS      = lanesByID['FEDERAL_LE'];
+const LANE_ADMIN_CORRUPTION_KEYWORDS = lanesByID['ADMIN_CORRUPTION'];
+const LANE_DEMS_MOMENT_KEYWORDS     = lanesByID['DEMS_MOMENT'];
+const LANE_DEM_DIRECTION_KEYWORDS   = lanesByID['DEM_DIRECTION'];
+const LANE_MEDIA_BALANCE_KEYWORDS   = lanesByID['MEDIA_BALANCE'];
 
 // ── Deprioritize keywords (Section 3) ────────────────────────────────────────
 
-// 3.1 International (general) — penalize unless exception keywords present
-const INTERNATIONAL_PENALTY_KEYWORDS = [
-  'overseas', 'abroad', 'foreign', 'international', 'europe', 'asia',
-  'africa', 'middle east', 'latin america', 'south america',
-];
-
-// 3.2 International exceptions — do NOT penalize
-const INTERNATIONAL_EXCEPTION_KEYWORDS = [
-  'corrupt deal', 'trump deal overseas', 'military', 'veteran', 'veterans',
-  'iran war', 'israel', 'tariff', 'tariffs', 'american workers',
-  'affordability', 'domestic effect', 'administration play',
-];
+const INTERNATIONAL_PENALTY_KEYWORDS   = CONFIG.deprioritize.internationalPenalty;
+const INTERNATIONAL_EXCEPTION_KEYWORDS = CONFIG.deprioritize.internationalExceptions;
 
 // ── Legacy keyword arrays (kept for backward compat with existing callers) ───
 
 const FANONE_HIGH_KEYWORDS = [
   ...LANE_FEDERAL_LE_KEYWORDS,
   ...LANE_ADMIN_CORRUPTION_KEYWORDS,
-  'democracy', 'authoritarian', 'autocrat', 'fascis',
-  'court', 'judge', 'judges', 'ruling', 'supreme court', 'scotus',
-  'constitution', 'unconstitutional', 'civil rights', 'voting rights',
-  'rule of law', 'due process', 'emergency powers', 'martial law',
-  'buried', 'underreported', 'overlooked', 'nobody is talking about',
-  'quietly', 'slipped through', 'under the radar',
+  ...CONFIG.scoringKeywords.highExtra,
 ];
 
 const FANONE_MEDIUM_KEYWORDS = [
   ...LANE_DEMS_MOMENT_KEYWORDS,
   ...LANE_DEM_DIRECTION_KEYWORDS,
   ...LANE_MEDIA_BALANCE_KEYWORDS,
-  'extremis', 'radical', 'militia', 'proud boys', 'oath keeper',
-  'domestic terror', 'white nationalist', 'white supremac',
-  'capitol', 'january 6', 'jan. 6', 'jan 6',
-  'national security', 'intelligence', 'cia', 'nsa',
-  'sanctions', 'nato', 'pentagon', 'military', 'troops',
-  'fraud', 'embezzl', 'money laundering', 'wire fraud',
-  'trump administration', 'white house', 'congress', 'senate',
-  'hearing', 'subpoena', 'executive order',
+  ...CONFIG.scoringKeywords.mediumExtra,
 ];
 
-const FANONE_LOW_KEYWORDS = [
-  'slams', 'blasts', 'claps back', 'destroys', 'owned',
-  'hot take', 'opinion poll', 'approval rating',
-  'celebrity', 'oscars', 'grammy', 'hollywood',
-  'kardashian', 'taylor swift', 'kanye',
-  'nfl', 'nba', 'mlb', 'soccer', 'olympic',
-  'box office', 'movie', 'tv show', 'streaming series',
-  'earnings', 'stock split', 'ipo', 'product launch', 'iphone', 'gadget',
-  'recipe', 'lifestyle', 'fashion', 'red carpet',
-];
-
-const FANONE_IMPACT_KEYWORDS = [
-  'killed', 'died', 'death', 'dying', 'fatal',
-  'family', 'families', 'children', 'kids', 'mother', 'father',
-  'fired', 'forced out', 'resign',
-  'crisis', 'scandal', 'cover up', 'cover-up',
-  'arrested', 'detained', 'raid',
-  'overturned', 'blocked', 'struck down', 'guilty', 'convicted',
-];
-
-const BREAKING_KEYWORDS = [
-  'breaking', 'just in', 'developing', 'happening now',
-  'arrested today', 'just arrested', 'just indicted', 'just ruled',
-  'emergency', 'shooting', 'active', 'unfolding',
-  'hours ago', 'minutes ago', 'just announced',
-];
+const FANONE_LOW_KEYWORDS    = CONFIG.scoringKeywords.low;
+const FANONE_IMPACT_KEYWORDS = CONFIG.scoringKeywords.impact;
+const BREAKING_KEYWORDS      = CONFIG.scoringKeywords.breaking;
 
 // ── Category assignment keywords ─────────────────────────────────────────────
 
-const LAW_ENFORCEMENT_KEYWORDS = [
-  'police', 'cop ', 'cops', 'officer', 'officers', 'sheriff', 'deputy',
-  'law enforcement', 'policing', 'police department', 'police officer',
-  'fbi', 'doj', 'dea', 'atf', 'ice ', 'i.c.e.', 'u.s. marshal',
-  'secret service', 'homeland security', 'dhs', 'federal agent',
-  'prosecutor', 'district attorney', 'attorney general', 'grand jury',
-  'indictment', 'indicted', 'indict', 'sentenc', 'verdict', 'trial',
-  'guilty', 'convicted', 'conviction', 'felony', 'misdemeanor',
-  'homicide', 'murder', 'shooting', 'mass shooting', 'gun violence',
-  'trafficking', 'drug trafficking', 'narcotics', 'cartel',
-  'body cam', 'bodycam', 'use of force', 'excessive force',
-  'police brutality', 'police reform', 'internal affairs',
-  'prison', 'jail', 'incarcerat', 'detention', 'detained',
-  'january 6', 'jan. 6', 'jan 6', 'capitol riot', 'insurrection',
-  'deport', 'deportation', 'border patrol', 'immigration enforcement',
-  'arrested', 'arrest', 'warrant', 'raid', 'seized',
-  'kash patel',
-];
-
-const POLITICAL_COMMENTARY_KEYWORDS = [
-  'election', 'campaign', 'ballot', 'voter', 'polling', 'primary',
-  'congress', 'senate', 'house of representatives', 'white house',
-  'policy', 'legislation', 'bill', 'executive order',
-  'budget', 'spending bill', 'government spending', 'shutdown',
-  'bipartisan', 'partisan', 'republican party', 'democratic party',
-  'gop', 'maga', 'progressive', 'conservative', 'liberal',
-  'trump administration', 'administration', 'cabinet', 'secretary',
-  'foreign policy', 'diplomacy', 'sanctions', 'nato', 'tariff',
-  'fetterman', 'democratic leadership', 'midterm', 'midterms',
-];
+const LAW_ENFORCEMENT_KEYWORDS     = CONFIG.categoryKeywords.lawEnforcement;
+const POLITICAL_COMMENTARY_KEYWORDS = CONFIG.categoryKeywords.politicalCommentary;
 
 // ── Category classifier ──────────────────────────────────────────────────────
 
@@ -187,13 +81,12 @@ function classifyCategory(text) {
 
 // ── Editorial lane detection (maps to FANONE_EDITORIAL.md Section 2) ─────────
 
-const EDITORIAL_LANES = [
-  { id: 'FEDERAL_LE',      label: 'FEDERAL LE',           keywords: LANE_FEDERAL_LE_KEYWORDS,      weight: 15 },
-  { id: 'ADMIN_CORRUPTION', label: 'ADMIN CORRUPTION',    keywords: LANE_ADMIN_CORRUPTION_KEYWORDS, weight: 12 },
-  { id: 'DEMS_MOMENT',     label: 'DEMS NOT MEETING THE MOMENT', keywords: LANE_DEMS_MOMENT_KEYWORDS, weight: 12 },
-  { id: 'DEM_DIRECTION',   label: 'PARTY DIRECTION',      keywords: LANE_DEM_DIRECTION_KEYWORDS,   weight: 8 },
-  { id: 'MEDIA_BALANCE',   label: 'MEDIA FALSE BALANCE',  keywords: LANE_MEDIA_BALANCE_KEYWORDS,   weight: 10 },
-];
+const EDITORIAL_LANES = CONFIG.editorialLanes.map(lane => ({
+  id: lane.id,
+  label: lane.label,
+  keywords: lane.keywords,
+  weight: lane.weight,
+}));
 
 function detectEditorialLanes(text) {
   const lower = text.toLowerCase();
@@ -211,27 +104,17 @@ function detectEditorialLanes(text) {
   return hits;
 }
 
-// ── Lane multiplier keywords (kept from original — still applies) ────────────
+// ── Lane multiplier keywords (loaded from config) ───────────────────────────
 
-const MAGA_DEFECTION_KEYWORDS = [
-  'maga', 'trump voter', 'former supporter', 'his base', 'loyal base',
-  'breaking with trump', 'regret voting', 'turning on trump',
-  'lifelong republican', 'former republican', 'maga crack', 'base fractur',
-];
-const INNER_CIRCLE_KEYWORDS = [
-  'resign', 'quit', 'fired', 'betray', 'trump ally', 'advisor', 'cabinet',
-  'insider', 'loyalist', 'split with trump', 'break with trump', 'fracture',
-  'turn on trump', 'former aide',
-];
-const ACCOUNTABILITY_ACTION_KEYWORDS = [
-  'indicted', 'charged', 'arrested', 'convicted', 'sentenced', 'fired', 'removed',
-];
-const EPSTEIN_KEYWORDS = ['epstein', 'maxwell', 'ghislaine'];
-const FOREIGN_POLICY_KEYWORDS = ['iran', 'putin', 'europe', 'china', 'venezuela'];
-const REACTIVE_OUTRAGE_PATTERNS = [
-  'trump said', 'trump posted', 'trump did', 'trump called', 'trump claims',
-  'trump tweeted', 'trump attacked', 'trump slammed', 'trump blasted',
-];
+const boostsByLane = {};
+for (const b of CONFIG.boosts) {
+  boostsByLane[b.lane] = b;
+}
+
+const penaltiesByLane = {};
+for (const p of CONFIG.penalties) {
+  penaltiesByLane[p.lane] = p;
+}
 
 function hasProperNoun(text) {
   const names = text.match(/\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}/g);
@@ -242,23 +125,27 @@ function computeLaneMultipliers(text, originalText) {
   const applied = [];
   const boostCandidates = [];
 
-  if (MAGA_DEFECTION_KEYWORDS.some(kw => text.includes(kw))) {
-    boostCandidates.push({ lane: 'MAGA Defection', type: 'boost', multiplier: 2.0 });
+  const magaDef = boostsByLane['MAGA Defection'];
+  if (magaDef.keywords.some(kw => text.includes(kw))) {
+    boostCandidates.push({ lane: 'MAGA Defection', type: 'boost', multiplier: magaDef.multiplier });
   }
-  if (INNER_CIRCLE_KEYWORDS.some(kw => text.includes(kw))) {
-    boostCandidates.push({ lane: 'Inner Circle Collapse', type: 'boost', multiplier: 1.8 });
+
+  const innerCircle = boostsByLane['Inner Circle Collapse'];
+  if (innerCircle.keywords.some(kw => text.includes(kw))) {
+    boostCandidates.push({ lane: 'Inner Circle Collapse', type: 'boost', multiplier: innerCircle.multiplier });
   }
+
   // Media malpractice now part of editorial lanes; keep boost for backward compat
   if (LANE_MEDIA_BALANCE_KEYWORDS.some(kw => text.includes(kw))) {
-    let mediaMult = 1.9;
-    const bonusSignals = ['retraction', 'correction', 'retracted', 'corrected',
-      'covering for trump', 'cover for trump', 'softball interview', 'puff piece',
-      'caught lying', 'proven wrong', 'false claim', 'debunked'];
-    if (bonusSignals.some(s => text.includes(s))) mediaMult += 0.3;
+    const mediaCfg = boostsByLane['Media Malpractice'];
+    let mediaMult = mediaCfg.multiplier;
+    if (mediaCfg.bonusSignals.some(s => text.includes(s))) mediaMult += mediaCfg.bonusAmount;
     boostCandidates.push({ lane: 'Media Malpractice', type: 'boost', multiplier: mediaMult });
   }
-  if (ACCOUNTABILITY_ACTION_KEYWORDS.some(kw => text.includes(kw)) && hasProperNoun(originalText)) {
-    boostCandidates.push({ lane: 'Specific Named Accountability', type: 'boost', multiplier: 1.5 });
+
+  const acctCfg = boostsByLane['Specific Named Accountability'];
+  if (acctCfg.keywords.some(kw => text.includes(kw)) && hasProperNoun(originalText)) {
+    boostCandidates.push({ lane: 'Specific Named Accountability', type: 'boost', multiplier: acctCfg.multiplier });
   }
 
   let boost = 1.0;
@@ -270,40 +157,42 @@ function computeLaneMultipliers(text, originalText) {
   }
 
   let penalty = 1.0;
-  const epsteinHits = EPSTEIN_KEYWORDS.filter(kw => text.includes(kw)).length;
+
+  const epsteinCfg = penaltiesByLane['Epstein-only'];
+  const epsteinHits = epsteinCfg.keywords.filter(kw => text.includes(kw)).length;
   if (epsteinHits > 0) {
-    const freshSignals = ['new ', 'unsealed', 'document', 'reveal', 'just released', 'newly'];
-    if (!freshSignals.some(s => text.includes(s))) {
-      penalty *= 0.4;
-      applied.push({ lane: 'Epstein-only', type: 'penalty', multiplier: 0.4 });
+    if (!epsteinCfg.freshSignals.some(s => text.includes(s))) {
+      penalty *= epsteinCfg.multiplier;
+      applied.push({ lane: 'Epstein-only', type: 'penalty', multiplier: epsteinCfg.multiplier });
     }
   }
 
-  const foreignHits = FOREIGN_POLICY_KEYWORDS.filter(kw => text.includes(kw)).length;
+  const foreignCfg = penaltiesByLane['Generic foreign policy'];
+  const foreignHits = foreignCfg.keywords.filter(kw => text.includes(kw)).length;
   if (foreignHits > 0 && boost <= 1.0) {
     // Check for international exceptions before penalizing
     if (!INTERNATIONAL_EXCEPTION_KEYWORDS.some(kw => text.includes(kw))) {
-      penalty *= 0.6;
-      applied.push({ lane: 'Generic foreign policy', type: 'penalty', multiplier: 0.6 });
+      penalty *= foreignCfg.multiplier;
+      applied.push({ lane: 'Generic foreign policy', type: 'penalty', multiplier: foreignCfg.multiplier });
     }
   }
 
-  const reactiveHits = REACTIVE_OUTRAGE_PATTERNS.filter(p => text.includes(p)).length;
+  const reactiveCfg = penaltiesByLane['Reactive outrage'];
+  const reactiveHits = reactiveCfg.keywords.filter(p => text.includes(p)).length;
   if (reactiveHits > 0) {
-    const hooks = ['indicted', 'charged', 'arrested', 'convicted', 'resign',
-      'fired', 'defect', 'breaking with', 'turning on', 'consequence'];
-    if (!hooks.some(h => text.includes(h))) {
-      penalty *= 0.7;
-      applied.push({ lane: 'Reactive outrage', type: 'penalty', multiplier: 0.7 });
+    if (!reactiveCfg.exceptionHooks.some(h => text.includes(h))) {
+      penalty *= reactiveCfg.multiplier;
+      applied.push({ lane: 'Reactive outrage', type: 'penalty', multiplier: reactiveCfg.multiplier });
     }
   }
 
   // International general penalty (Section 3.1)
+  const intlCfg = penaltiesByLane['International (general)'];
   const intlHits = INTERNATIONAL_PENALTY_KEYWORDS.filter(kw => text.includes(kw)).length;
-  if (intlHits >= 2 && boost <= 1.0) {
+  if (intlHits >= intlCfg.minHits && boost <= 1.0) {
     if (!INTERNATIONAL_EXCEPTION_KEYWORDS.some(kw => text.includes(kw))) {
-      penalty *= 0.7;
-      applied.push({ lane: 'International (general)', type: 'penalty', multiplier: 0.7 });
+      penalty *= intlCfg.multiplier;
+      applied.push({ lane: 'International (general)', type: 'penalty', multiplier: intlCfg.multiplier });
     }
   }
 

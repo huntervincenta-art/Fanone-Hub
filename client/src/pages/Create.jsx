@@ -99,38 +99,40 @@ export default function Create({ passphrase, userName }) {
   const [activeTab, setActiveTab] = useState('discover');
 
   return (
-    <section className="section tp-page">
-      <div className="tp-page-header">
+    <div className="create-page">
+      <div className="create-page-header">
         <h2>Create</h2>
       </div>
 
-      <div className="tp-tab-bar">
-        {CREATE_TABS.map(tab => (
-          <button
-            key={tab.key}
-            className={`tp-tab-btn${activeTab === tab.key ? ' tp-tab-btn--active' : ''}`}
-            onClick={() => setActiveTab(tab.key)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="dash-card create-page-body">
+        <div className="tp-tab-bar">
+          {CREATE_TABS.map(tab => (
+            <button
+              key={tab.key}
+              className={`tp-tab-btn${activeTab === tab.key ? ' tp-tab-btn--active' : ''}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'discover' && (
+          <FindStories passphrase={passphrase} userName={userName} />
+        )}
+
+        {activeTab === 'generate' && (
+          <GenerateTab passphrase={passphrase} userName={userName} />
+        )}
+
+        {activeTab === 'scriptAnalyzer' && (
+          <ScriptAnalyzer passphrase={passphrase} />
+        )}
+
+        {activeTab === 'topical' && (
+          <TopicalTab passphrase={passphrase} userName={userName} />
+        )}
       </div>
-
-      {activeTab === 'discover' && (
-        <FindStories passphrase={passphrase} userName={userName} />
-      )}
-
-      {activeTab === 'generate' && (
-        <GenerateTab passphrase={passphrase} userName={userName} />
-      )}
-
-      {activeTab === 'scriptAnalyzer' && (
-        <ScriptAnalyzer passphrase={passphrase} />
-      )}
-
-      {activeTab === 'topical' && (
-        <TopicalTab passphrase={passphrase} userName={userName} />
-      )}
-    </section>
+    </div>
   );
 }

@@ -7275,6 +7275,49 @@ details[open] .notif-all-topics-summary::before {
   letter-spacing: 0.05em;
 }
 
+/* ── Create page layout (matches Dashboard card pattern) ────── */
+
+.create-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.create-page-header {
+  margin-bottom: 0;
+}
+
+.create-page-header h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* The tab bar + tab content sit inside a dash-card for containment */
+.create-page-body {
+  padding: 1.25rem;
+}
+
+.create-page-body > .tp-tab-bar {
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .create-page {
+    gap: 0.85rem;
+  }
+
+  .create-page-header h2 {
+    font-size: 1.15rem;
+  }
+
+  .create-page-body {
+    padding: 0.85rem;
+  }
+}
+
 /* Smart Input */
 .tp-input-section {
   margin-bottom: 1.5rem;
@@ -8367,5 +8410,189 @@ html[data-theme="light"] .hub-overflow-item:hover {
   .hub-overflow-menu {
     right: auto;
     left: 0;
+  }
+}
+
+/* ── History page ──────────────────────────────── */
+
+.history-page h2 {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.history-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.history-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.history-row:last-child {
+  border-bottom: none;
+}
+
+.history-row-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.history-row-summary:hover {
+  background: rgba(196, 30, 58, 0.04);
+}
+
+.history-row--expanded .history-row-summary {
+  background: rgba(196, 30, 58, 0.06);
+}
+
+.history-chevron {
+  flex-shrink: 0;
+  width: 14px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.history-badge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  color: #fff;
+}
+
+.history-badge--script   { background: #6366f1; }
+.history-badge--topic    { background: #0ea5e9; }
+.history-badge--discover { background: #22c55e; }
+.history-badge--analyzer { background: #f59e0b; }
+
+.history-title {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  min-width: 0;
+}
+
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.history-user {
+  font-weight: 600;
+  color: var(--text-secondary, var(--muted));
+}
+
+.history-date {
+  white-space: nowrap;
+}
+
+.history-detail {
+  padding: 0.75rem 0.85rem 0.85rem 2.2rem;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.015);
+}
+
+.history-detail-body {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.history-detail-body > div {
+  margin-bottom: 0.3rem;
+}
+
+.history-detail-body a {
+  color: var(--accent, #c41e3a);
+  word-break: break-all;
+}
+
+.history-headline-list {
+  margin: 0.3rem 0 0 1.2rem;
+  padding: 0;
+  list-style: disc;
+}
+
+.history-headline-list li {
+  font-size: 0.8rem;
+  margin-bottom: 0.15rem;
+  color: var(--text);
+}
+
+.history-detail-raw {
+  font-size: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  overflow-x: auto;
+  max-height: 300px;
+  white-space: pre-wrap;
+}
+
+.history-rec {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.history-rec--green  { color: #22c55e; }
+.history-rec--yellow { color: #f59e0b; }
+.history-rec--red    { color: #ef4444; }
+
+.history-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.history-page-info {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .history-row-summary {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .history-meta {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .history-title {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
   }
 }

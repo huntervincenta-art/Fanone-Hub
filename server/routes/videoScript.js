@@ -261,8 +261,6 @@ router.post('/video-script', async (req, res) => {
     }
 
     let rawText = ((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '';
-    // Strip em dashes and en dashes (teleprompter compat)
-    rawText = rawText.replace(/\u2014/g, '. ').replace(/\u2013/g, '. ');
     if (!rawText) {
       return res.status(502).json({ error: 'Empty response from Anthropic' });
     }
@@ -277,6 +275,16 @@ router.post('/video-script', async (req, res) => {
         error: 'Failed to parse Claude response as JSON',
         rawOutput: rawText,
       });
+    }
+
+    // 8b. Strip em/en dashes from script body fields only (teleprompter compat)
+    const stripDashes = s => s ? s.replace(/\u2014/g, '. ').replace(/\u2013/g, '. ') : s;
+    if (parsed.script) {
+      for (const key of Object.keys(parsed.script)) {
+        if (typeof parsed.script[key] === 'string') {
+          parsed.script[key] = stripDashes(parsed.script[key]);
+        }
+      }
     }
 
     // 9. Persist to scripts collection if Script model is available
@@ -302,7 +310,15 @@ router.post('/video-script', async (req, res) => {
       console.error('[video-script] failed to persist script:', saveErr.message);
     }
 
-    // 10. Return result
+    // 10. Log to activity
+    try {
+      const mongoose = require('mongoose');
+      if (mongoose.models.ActivityLog) {
+        new mongoose.models.ActivityLog({ type: 'script', title: meta.title || youtubeUrl, user: req.body.user || '', payload: { inputType: 'video', sourceUrl: youtubeUrl, scriptId: savedId } }).save().catch(() => {});
+      }
+    } catch {}
+
+    // 11. Return result
     res.json({
       videoId,
       meta: { ...meta, durationSeconds: videoDurationSec },

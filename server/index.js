@@ -57,10 +57,19 @@ function getPersonalTopic(name) {
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const YOUTUBE_API_KEY   = process.env.YOUTUBE_API_KEY;
 
-// Strip em dashes and en dashes from script output (teleprompter compat)
-function stripDashes(text) {
+// Strip em dashes and en dashes from TELEPROMPTER SCRIPT body only.
+// Titles, alt titles, thumbnail text, and YouTube description keep their dashes.
+function stripDashesFromBody(text) {
   if (!text) return text;
-  return text.replace(/\u2014/g, '. ').replace(/\u2013/g, '. ');
+  const marker = '# TELEPROMPTER SCRIPT';
+  const idx = text.indexOf(marker);
+  if (idx === -1) {
+    // No teleprompter section found — strip the whole thing as fallback
+    return text.replace(/\u2014/g, '. ').replace(/\u2013/g, '. ');
+  }
+  const before = text.slice(0, idx + marker.length);
+  const body   = text.slice(idx + marker.length);
+  return before + body.replace(/\u2014/g, '. ').replace(/\u2013/g, '. ');
 }
 const DATA_START_ROW = 3;
 const TAB = 'Stories';
@@ -240,12 +249,15 @@ async function fetchHeadlinePool() {
   const rssUrl = 'https://news.google.com/rss/search?q=Trump+OR+Democrats+OR+Republicans+OR+Congress+OR+MAGA&hl=en-US&gl=US&ceid=US:en';
   const rssRes = await fetchGoogleNewsRss(rssUrl, 'recommended-story');
   if (rssRes.status !== 200 || typeof rssRes.body !== 'string') {
-    throw new Error(`Google News RSS fetch failed (status ${rssRes.status})`);
+    const isBlock = rssRes.status === 429 || rssRes.status === 503;
+    throw new Error(isBlock
+      ? 'Google News is temporarily blocking requests. Try again in a minute.'
+      : `Google News RSS fetch failed (status ${rssRes.status})`);
   }
   const rssParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
   const parsed = rssParser.parse(rssRes.body);
   const rawItems = [].concat(parsed?.rss?.channel?.item || []);
-  if (rawItems.length === 0) throw new Error('Google News RSS returned no items');
+  if (rawItems.length === 0) throw new Error('Google News RSS returned no items. Try again shortly.');
 
   // Debug: log first item structure for diagnostics
   if (rawItems[0]) {
@@ -438,6 +450,15 @@ const scriptSchema = new mongoose.Schema({
   updatedAt:        { type: String, default: '' },
 }, { versionKey: false, collection: 'scripts' });
 
+const activityLogSchema = new mongoose.Schema({
+  _id:       { type: String, default: () => Date.now().toString() },
+  type:      { type: String, enum: ['script', 'topic', 'discover', 'analyzer'], required: true },
+  title:     { type: String, default: '' },
+  user:      { type: String, default: '' },
+  payload:   { type: mongoose.Schema.Types.Mixed, default: {} },
+  createdAt: { type: String, default: () => new Date().toISOString() },
+}, { versionKey: false, collection: 'activityLogs' });
+
 const topicalNarrativeSchema = new mongoose.Schema({
   _id:             { type: String, default: () => Date.now().toString() },
   thesis:          { type: String, required: true },
@@ -460,6 +481,7 @@ const DM                = mongoose.model('DM', dmSchema);
 const ListItem          = mongoose.model('ListItem', listItemSchema);
 const HunterUpdate      = mongoose.model('HunterUpdate', hunterUpdateSchema);
 const Script            = mongoose.model('Script', scriptSchema);
+const ActivityLog       = mongoose.model('ActivityLog', activityLogSchema);
 const TopicalNarrative  = mongoose.model('TopicalNarrative', topicalNarrativeSchema);
 
 // Convert mongoose doc → plain object with `id` field instead of `_id`
@@ -1840,7 +1862,7 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const script = stripDashes(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
+    const script = stripDashesFromBody(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
     let savedId = null;
@@ -1857,6 +1879,9 @@ app.post('/api/generate-script', requireAuth, async (req, res) => {
     } catch (saveErr) {
       console.error('[generate-script] failed to persist script:', saveErr.message);
     }
+
+    // Log to activity
+    new ActivityLog({ type: 'script', title: articleTitle || '(Untitled)', user: user || '', payload: { inputType: 'article', articleSource, scriptId: savedId } }).save().catch(() => {});
 
     res.json({ script, id: savedId });
   } catch (err) {
@@ -2005,7 +2030,7 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const script = stripDashes(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
+    const script = stripDashesFromBody(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
     let savedId = null;
@@ -2023,6 +2048,9 @@ app.post('/api/fanone/generate-script-from-url', requireAuth, async (req, res) =
     } catch (saveErr) {
       console.error('[generate-script-from-url] failed to persist script:', saveErr.message);
     }
+
+    // Log to activity
+    new ActivityLog({ type: 'script', title: articleTitle || url, user: user || '', payload: { inputType: urlType === 'youtube' ? 'video' : 'url', sourceUrl: url, scriptId: savedId } }).save().catch(() => {});
 
     res.json({ script, id: savedId, archiveFallback: archiveFallbackUsed || false });
   } catch (err) {
@@ -2095,7 +2123,7 @@ app.post('/api/fanone-hub/topic-script', requireAuth, async (req, res) => {
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const script = stripDashes(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
+    const script = stripDashesFromBody(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
     let savedId = null;
@@ -2126,6 +2154,9 @@ app.post('/api/fanone-hub/topic-script', requireAuth, async (req, res) => {
       }
     }
 
+    // Log to activity
+    new ActivityLog({ type: 'topic', title: isTopicalFlow ? (suggestedTitle || thesis) : topic, user: user || '', payload: { inputType: isTopicalFlow ? 'topical' : 'topic', scriptId: savedId } }).save().catch(() => {});
+
     res.json({ script, id: savedId });
   } catch (err) {
     console.error('POST /api/fanone-hub/topic-script error:', err.message);
@@ -2153,6 +2184,30 @@ app.get('/api/scripts', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('GET /api/scripts error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/activity — unified activity log for History page
+app.get('/api/activity', requireAuth, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const skip = (page - 1) * limit;
+    const filter = {};
+    if (req.query.type) filter.type = req.query.type;
+    const [entries, total] = await Promise.all([
+      ActivityLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      ActivityLog.countDocuments(filter),
+    ]);
+    res.json({
+      entries: entries.map(e => { e.id = e._id; delete e._id; return e; }),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    console.error('GET /api/activity error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2253,7 +2308,7 @@ app.post('/api/scripts/:id/regenerate', requireAuth, async (req, res) => {
       return res.status(502).json({ error: `Anthropic API error (${anthropicRes.status}): ${errMsg}` });
     }
 
-    const script = stripDashes(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
+    const script = stripDashesFromBody(((anthropicRes.body.content || []).find(c => c.type === 'text') || {}).text || '');
     if (!script) return res.status(502).json({ error: 'Empty script returned from Anthropic' });
 
     existing.previousVersion = existing.generatedScript;
@@ -2370,6 +2425,10 @@ ${script}`;
       console.error('[analyze-script] JSON parse failed. Raw output:', rawText.slice(0, 500));
       return res.status(500).json({ error: 'Failed to parse analysis as JSON', rawOutput: rawText });
     }
+
+    // Log to activity
+    const analyzerTitle = parsed.summary || `${parsed.recommendation || '?'} — ${parsed.primaryAngleMatch?.angle || 'no angle'}`;
+    new ActivityLog({ type: 'analyzer', title: analyzerTitle, payload: { recommendation: parsed.recommendation, angle: parsed.primaryAngleMatch?.angle, hookStrength: parsed.hookStrength?.rating, retention: parsed.estimatedRetention, suggestions: parsed.suggestions } }).save().catch(() => {});
 
     res.json({ analysis: parsed });
   } catch (err) {
@@ -2848,11 +2907,15 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
       return res.json(cached.data);
     }
 
-    // Fetch all lane-targeted RSS queries sequentially (avoids hammering Google)
+    // Fetch all lane-targeted RSS queries sequentially with stagger delay
     const rssParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
     const allRawItems = [];
+    let blockedCount = 0;
 
-    for (const q of FIND_STORIES_RSS_QUERIES) {
+    for (let qi = 0; qi < FIND_STORIES_RSS_QUERIES.length; qi++) {
+      const q = FIND_STORIES_RSS_QUERIES[qi];
+      // Stagger 1.5s between queries to avoid Google rate-limiting
+      if (qi > 0) await new Promise(r => setTimeout(r, 1500));
       const rssUrl = `https://news.google.com/rss/search?q=${q}&hl=en-US&gl=US&ceid=US:en`;
       try {
         const rssRes = await fetchGoogleNewsRss(rssUrl, 'find-stories');
@@ -2862,17 +2925,22 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
           allRawItems.push(...items);
           console.log(`[find-stories] query "${q.slice(0, 50)}…" returned ${items.length} items`);
         } else {
+          blockedCount++;
           console.warn(`[find-stories] query "${q.slice(0, 50)}…" failed with status ${rssRes.status}`);
         }
       } catch (fetchErr) {
+        blockedCount++;
         console.warn(`[find-stories] query "${q.slice(0, 50)}…" error: ${fetchErr.message}`);
       }
     }
 
-    console.log('[find-stories] total raw RSS items across all queries:', allRawItems.length);
+    console.log('[find-stories] total raw RSS items across all queries:', allRawItems.length, '| blocked queries:', blockedCount);
 
     if (allRawItems.length === 0) {
-      return res.status(502).json({ error: 'Google News RSS returned no items from any query' });
+      const msg = blockedCount > 0
+        ? `Google News is temporarily blocking requests (${blockedCount}/${FIND_STORIES_RSS_QUERIES.length} queries failed). Try again in a minute.`
+        : 'Google News RSS returned no items from any query. Try again shortly.';
+      return res.status(502).json({ error: msg });
     }
 
     // Widened post-fetch filter: includes law enforcement, accountability, and court terms
@@ -3017,6 +3085,11 @@ app.get('/api/find-stories', requireAuth, async (req, res) => {
     enriched.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
     findStoriesCache.set(cacheKey, { data: enriched, expiresAt: Date.now() + FIND_STORIES_CACHE_TTL_MS });
     console.log('[find-stories] cached result | expires in 2 min |', enriched.length, 'story clusters');
+
+    // Log to activity (one entry per discover run, not per article)
+    const topHeadlines = enriched.slice(0, 5).map(s => s.headline);
+    new ActivityLog({ type: 'discover', title: `${enriched.length} stories (${win} window)`, payload: { window: win, storyCount: enriched.length, topHeadlines } }).save().catch(() => {});
+
     res.json(enriched);
   } catch (err) {
     console.error('GET /api/find-stories error:', err.message);

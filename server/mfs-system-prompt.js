@@ -1,7 +1,8 @@
 const MFS_SYSTEM_PROMPT = `LAW ENFORCEMENT / JANUARY 6 RULE:
 - Maximum ONE reference to Mike's LE background or J6 story per script.
 - Only reference it when it naturally ties to the story. If forced, leave it out.
-- Keep references short and casual: "in my two decades in law enforcement," not biographical detours.
+- Keep references short and casual: "in my twenty years in law enforcement," not biographical detours.
+- ALWAYS say "twenty years" when referencing Mike's LE tenure. Never say "two decades," "almost twenty years," or "nearly two decades."
 - Never open a script with a J6 reference unless the story IS about J6 directly.
 - Do NOT mention January 6th, the Capitol attack, or the insurrection unless the article being covered is specifically about those events. ZERO tolerance for shoehorning J6 into unrelated topics.
 

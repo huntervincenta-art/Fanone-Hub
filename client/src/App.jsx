@@ -9,6 +9,7 @@ import ScriptResult from './pages/ScriptResult';
 import Dashboard from './pages/Dashboard';
 import Create from './pages/Create';
 import StoryLog from './pages/StoryLog';
+import History from './pages/History';
 import './App.css';
 
 const PERSISTENT_KEY       = 'team_hub_persistent_auth';
@@ -307,6 +308,12 @@ export default function App() {
           >
             Story Log
           </Link>
+          <Link
+            className={`app-nav-link${isActive('/history') ? ' app-nav-link--active' : ''}`}
+            to="/history"
+          >
+            History
+          </Link>
         </nav>
         <div className="app-header-right">
           {/* Hamburger — mobile only */}
@@ -368,6 +375,7 @@ export default function App() {
               <Link className={`mobile-nav-link${isActive('/') ? ' mobile-nav-link--active' : ''}`} to="/">Dashboard</Link>
               <Link className={`mobile-nav-link${isActive('/create') ? ' mobile-nav-link--active' : ''}`} to="/create">Create</Link>
               <Link className={`mobile-nav-link${isActive('/story-log') ? ' mobile-nav-link--active' : ''}`} to="/story-log">Story Log</Link>
+              <Link className={`mobile-nav-link${isActive('/history') ? ' mobile-nav-link--active' : ''}`} to="/history">History</Link>
             </nav>
           </>
         )}
@@ -390,6 +398,9 @@ export default function App() {
               onSubmitClick={() => setSubmitOpen(true)}
               lastUpdated={lastUpdated}
             />
+          } />
+          <Route path="/history" element={
+            <History passphrase={passphrase} />
           } />
           <Route path="/title-tool" element={
             <section className="section">

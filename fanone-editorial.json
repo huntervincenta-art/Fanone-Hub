@@ -1,0 +1,234 @@
+{
+  "editorialLanes": [
+    {
+      "id": "FEDERAL_LE",
+      "label": "FEDERAL LE",
+      "weight": 15,
+      "keywords": [
+        "ice ", "i.c.e.", "doj", "justice department", "fbi", "kash patel",
+        "federal law enforcement", "federal agent", "federal agents",
+        "border patrol", "immigration enforcement", "deport", "deportation",
+        "detention", "detain", "detained", "raid", "ice raid",
+        "atf", "dea", "task force", "undercover", "narcotics",
+        "drug trafficking", "trafficking", "cartel",
+        "law enforcement", "police", "cop ", "cops", "policing",
+        "body cam", "bodycam", "police reform", "use of force",
+        "officer", "officers", "sheriff", "prosecutor",
+        "indict", "indicted", "indictment", "attorney general"
+      ]
+    },
+    {
+      "id": "ADMIN_CORRUPTION",
+      "label": "ADMIN CORRUPTION",
+      "weight": 12,
+      "keywords": [
+        "rfk", "robert f. kennedy", "hegseth", "pete hegseth", "rubio", "marco rubio",
+        "kash patel", "cabinet", "secretary", "loyalist", "loyalists",
+        "incompetent", "incompetence", "unqualified", "corruption", "corrupt",
+        "bribe", "bribery", "kickback", "pay-to-play", "grift",
+        "abuse of power", "misconduct", "ethics violation", "conflict of interest",
+        "whistleblower", "cover up", "cover-up", "coverup",
+        "oversight", "accountability", "inspector general",
+        "trump deal", "corrupt deal", "pardon", "commutation"
+      ]
+    },
+    {
+      "id": "DEMS_MOMENT",
+      "label": "DEMS NOT MEETING THE MOMENT",
+      "weight": 12,
+      "keywords": [
+        "fetterman", "capitulate", "capitulation", "soft-pedal", "normalize",
+        "democrat cave", "democrats cave", "democratic capitulation",
+        "bipartisan surrender", "reaching across", "working with trump",
+        "democrat fail", "democrats fail", "democratic leadership",
+        "schumer", "pelosi", "hakeem jeffries", "democratic establishment",
+        "meet the moment", "missing the moment", "accountability and affordability"
+      ]
+    },
+    {
+      "id": "DEM_DIRECTION",
+      "label": "PARTY DIRECTION",
+      "weight": 8,
+      "keywords": [
+        "party direction", "democratic party", "party infight", "dem infight",
+        "midterm", "midterms", "primary challenge", "progressive vs moderate",
+        "party strategy", "democratic strategy", "what democrats should",
+        "party identity", "democratic brand", "winning message"
+      ]
+    },
+    {
+      "id": "MEDIA_BALANCE",
+      "label": "MEDIA FALSE BALANCE",
+      "weight": 10,
+      "keywords": [
+        "both sides", "false equivalence", "sanewashing", "normalizing",
+        "fair and balanced", "false balance", "mainstream media",
+        "cnn", "msnbc", "new york times", "nyt", "washington post",
+        "platformed", "fact-check", "retraction", "correction", "softball",
+        "benefit of the doubt", "puff piece", "covering for trump",
+        "media failure", "media malpractice", "press failure"
+      ]
+    }
+  ],
+
+  "deprioritize": {
+    "internationalPenalty": [
+      "overseas", "abroad", "foreign", "international", "europe", "asia",
+      "africa", "middle east", "latin america", "south america"
+    ],
+    "internationalExceptions": [
+      "corrupt deal", "trump deal overseas", "military", "veteran", "veterans",
+      "iran war", "israel", "tariff", "tariffs", "american workers",
+      "affordability", "domestic effect", "administration play"
+    ]
+  },
+
+  "boosts": [
+    {
+      "lane": "MAGA Defection",
+      "multiplier": 2.0,
+      "keywords": [
+        "maga", "trump voter", "former supporter", "his base", "loyal base",
+        "breaking with trump", "regret voting", "turning on trump",
+        "lifelong republican", "former republican", "maga crack", "base fractur"
+      ]
+    },
+    {
+      "lane": "Inner Circle Collapse",
+      "multiplier": 1.8,
+      "keywords": [
+        "resign", "quit", "fired", "betray", "trump ally", "advisor", "cabinet",
+        "insider", "loyalist", "split with trump", "break with trump", "fracture",
+        "turn on trump", "former aide"
+      ]
+    },
+    {
+      "lane": "Media Malpractice",
+      "multiplier": 1.9,
+      "bonusAmount": 0.3,
+      "bonusSignals": [
+        "retraction", "correction", "retracted", "corrected",
+        "covering for trump", "cover for trump", "softball interview", "puff piece",
+        "caught lying", "proven wrong", "false claim", "debunked"
+      ]
+    },
+    {
+      "lane": "Specific Named Accountability",
+      "multiplier": 1.5,
+      "requiresProperNoun": true,
+      "keywords": [
+        "indicted", "charged", "arrested", "convicted", "sentenced", "fired", "removed"
+      ]
+    }
+  ],
+
+  "penalties": [
+    {
+      "lane": "Epstein-only",
+      "multiplier": 0.4,
+      "keywords": ["epstein", "maxwell", "ghislaine"],
+      "freshSignals": ["new ", "unsealed", "document", "reveal", "just released", "newly"]
+    },
+    {
+      "lane": "Generic foreign policy",
+      "multiplier": 0.6,
+      "requiresNoBoost": true,
+      "keywords": ["iran", "putin", "europe", "china", "venezuela"]
+    },
+    {
+      "lane": "Reactive outrage",
+      "multiplier": 0.7,
+      "keywords": [
+        "trump said", "trump posted", "trump did", "trump called", "trump claims",
+        "trump tweeted", "trump attacked", "trump slammed", "trump blasted"
+      ],
+      "exceptionHooks": [
+        "indicted", "charged", "arrested", "convicted", "resign",
+        "fired", "defect", "breaking with", "turning on", "consequence"
+      ]
+    },
+    {
+      "lane": "International (general)",
+      "multiplier": 0.7,
+      "requiresNoBoost": true,
+      "minHits": 2
+    }
+  ],
+
+  "scoringKeywords": {
+    "highExtra": [
+      "democracy", "authoritarian", "autocrat", "fascis",
+      "court", "judge", "judges", "ruling", "supreme court", "scotus",
+      "constitution", "unconstitutional", "civil rights", "voting rights",
+      "rule of law", "due process", "emergency powers", "martial law",
+      "buried", "underreported", "overlooked", "nobody is talking about",
+      "quietly", "slipped through", "under the radar"
+    ],
+    "mediumExtra": [
+      "extremis", "radical", "militia", "proud boys", "oath keeper",
+      "domestic terror", "white nationalist", "white supremac",
+      "capitol", "january 6", "jan. 6", "jan 6",
+      "national security", "intelligence", "cia", "nsa",
+      "sanctions", "nato", "pentagon", "military", "troops",
+      "fraud", "embezzl", "money laundering", "wire fraud",
+      "trump administration", "white house", "congress", "senate",
+      "hearing", "subpoena", "executive order"
+    ],
+    "low": [
+      "slams", "blasts", "claps back", "destroys", "owned",
+      "hot take", "opinion poll", "approval rating",
+      "celebrity", "oscars", "grammy", "hollywood",
+      "kardashian", "taylor swift", "kanye",
+      "nfl", "nba", "mlb", "soccer", "olympic",
+      "box office", "movie", "tv show", "streaming series",
+      "earnings", "stock split", "ipo", "product launch", "iphone", "gadget",
+      "recipe", "lifestyle", "fashion", "red carpet"
+    ],
+    "impact": [
+      "killed", "died", "death", "dying", "fatal",
+      "family", "families", "children", "kids", "mother", "father",
+      "fired", "forced out", "resign",
+      "crisis", "scandal", "cover up", "cover-up",
+      "arrested", "detained", "raid",
+      "overturned", "blocked", "struck down", "guilty", "convicted"
+    ],
+    "breaking": [
+      "breaking", "just in", "developing", "happening now",
+      "arrested today", "just arrested", "just indicted", "just ruled",
+      "emergency", "shooting", "active", "unfolding",
+      "hours ago", "minutes ago", "just announced"
+    ]
+  },
+
+  "categoryKeywords": {
+    "lawEnforcement": [
+      "police", "cop ", "cops", "officer", "officers", "sheriff", "deputy",
+      "law enforcement", "policing", "police department", "police officer",
+      "fbi", "doj", "dea", "atf", "ice ", "i.c.e.", "u.s. marshal",
+      "secret service", "homeland security", "dhs", "federal agent",
+      "prosecutor", "district attorney", "attorney general", "grand jury",
+      "indictment", "indicted", "indict", "sentenc", "verdict", "trial",
+      "guilty", "convicted", "conviction", "felony", "misdemeanor",
+      "homicide", "murder", "shooting", "mass shooting", "gun violence",
+      "trafficking", "drug trafficking", "narcotics", "cartel",
+      "body cam", "bodycam", "use of force", "excessive force",
+      "police brutality", "police reform", "internal affairs",
+      "prison", "jail", "incarcerat", "detention", "detained",
+      "january 6", "jan. 6", "jan 6", "capitol riot", "insurrection",
+      "deport", "deportation", "border patrol", "immigration enforcement",
+      "arrested", "arrest", "warrant", "raid", "seized",
+      "kash patel"
+    ],
+    "politicalCommentary": [
+      "election", "campaign", "ballot", "voter", "polling", "primary",
+      "congress", "senate", "house of representatives", "white house",
+      "policy", "legislation", "bill", "executive order",
+      "budget", "spending bill", "government spending", "shutdown",
+      "bipartisan", "partisan", "republican party", "democratic party",
+      "gop", "maga", "progressive", "conservative", "liberal",
+      "trump administration", "administration", "cabinet", "secretary",
+      "foreign policy", "diplomacy", "sanctions", "nato", "tariff",
+      "fetterman", "democratic leadership", "midterm", "midterms"
+    ]
+  }
+}
